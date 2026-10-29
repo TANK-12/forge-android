@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Open Zenith">
+  <defs>
+    <radialGradient id="sun" cx="50%" cy="40%" r="60%">
+      <stop offset="0" stop-color="#fff4d6"/>
+      <stop offset="0.55" stop-color="#ffc56b"/>
+      <stop offset="1" stop-color="#ff8a4c"/>
+    </radialGradient>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2a44"/>
+      <stop offset="1" stop-color="#0d1117"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#sky)"/>
+  <path d="M8 50 A24 24 0 0 1 56 50" fill="none" stroke="#7aa2ff" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
+  <circle cx="32" cy="26" r="9" fill="url(#sun)"/>
+  <path d="M32 8v5M32 39v0" stroke="#ffc56b" stroke-width="3" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="app.forge.phone" android:versionCode="1" android:versionName="0.1">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <application android:label="@string/name" android:icon="@mipmap/icon"
+      android:usesCleartextTraffic="false" android:allowBackup="false"
+      android:theme="@android:style/Theme.Material.NoActionBar">
+    <activity android:name=".Main" android:exported="true"
+        android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
+        android:windowSoftInputMode="adjustResize">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>

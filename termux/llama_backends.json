@@ -1,0 +1,79 @@
+{
+  "_about": "Which llama.cpp backend runs on which GPU, for shared/forge_gpu.py and forge_link.py (Relay task 524). backends: tried in order, the first one that suits a device and has a build wins. suits: vendors (nvidia, amd, intel, other) and kinds (discrete, integrated) it is meant for; prefer_over_vulkan false means it is only used when Emerson asks for it by name (--backend), true means it wins over Vulkan when its build is there. build: the official ggml-org/llama.cpp release asset per OS ({build} is the build number, such as b11980); both PCs of a split need the same build. memory: how much of a device's free memory a model may take. integrated: an iGPU shares the system RAM, so it gets share_of_free of what is free, and never more than leaves keep_ram_mb of RAM free (the same 4096 MB forge_ram's model_load rule keeps). discrete: keep_free_mb stays free for the desktop and other apps. cpu: the layers left on the CPU keep keep_ram_mb of RAM free too. overhead: what a model needs beyond its weights, as a fraction of the weights plus fixed MB for the KV cache and compute buffers at the default context.",
+  "release": "https://github.com/ggml-org/llama.cpp/releases/download/{build}/{asset}",
+  "default_build": "b11980",
+  "builds_dir": "~/.local/share/forge/llama.cpp",
+  "backends": [
+    {
+      "id": "cuda",
+      "name": "CUDA",
+      "suits": {"vendors": ["nvidia"], "kinds": ["discrete"]},
+      "prefer_over_vulkan": true,
+      "device_prefix": "CUDA",
+      "why": "NVIDIA's own compute path; the fastest on NVIDIA cards",
+      "build": {
+        "linux": "llama-{build}-bin-ubuntu-cuda-12.8-x64.tar.gz",
+        "windows": "llama-{build}-bin-win-cuda-12.4-x64.zip"
+      },
+      "extra": {"windows": "cudart-llama-bin-win-cuda-12.4-x64.zip"}
+    },
+    {
+      "id": "rocm",
+      "name": "ROCm (HIP)",
+      "suits": {"vendors": ["amd"], "kinds": ["discrete"]},
+      "prefer_over_vulkan": false,
+      "device_prefix": "ROCm",
+      "why": "AMD's compute path: faster prompt reading on supported Radeon RX 6000/7000/9000 cards, but it needs a supported card and driver stack, so Vulkan stays the default",
+      "build": {
+        "linux": "llama-{build}-bin-ubuntu-rocm-10.0-x64.tar.gz",
+        "windows": "llama-{build}-bin-win-rocm-10.0-x64.zip"
+      }
+    },
+    {
+      "id": "sycl",
+      "name": "SYCL (oneAPI)",
+      "suits": {"vendors": ["intel"], "kinds": ["discrete"]},
+      "prefer_over_vulkan": false,
+      "device_prefix": "SYCL",
+      "why": "Intel's compute path for Arc cards: faster prompt reading there, but it needs the oneAPI runtime, so Vulkan stays the default",
+      "build": {
+        "linux": "llama-{build}-bin-ubuntu-sycl-fp16-x64.tar.gz",
+        "windows": "llama-{build}-bin-win-sycl-x64.zip"
+      }
+    },
+    {
+      "id": "vulkan",
+      "name": "Vulkan",
+      "suits": {
+        "vendors": ["nvidia", "amd", "intel", "other"],
+        "kinds": ["discrete", "integrated"]
+      },
+      "prefer_over_vulkan": true,
+      "device_prefix": "Vulkan",
+      "why": "works on NVIDIA, AMD and Intel cards and on integrated graphics with the normal graphics driver",
+      "build": {
+        "linux": "llama-{build}-bin-ubuntu-vulkan-x64.tar.gz",
+        "windows": "llama-{build}-bin-win-vulkan-x64.zip"
+      }
+    },
+    {
+      "id": "cpu",
+      "name": "CPU",
+      "suits": {"vendors": [], "kinds": []},
+      "prefer_over_vulkan": true,
+      "device_prefix": "CPU",
+      "why": "the last resort: no graphics card llama.cpp can use",
+      "build": {
+        "linux": "llama-{build}-bin-ubuntu-x64.tar.gz",
+        "windows": "llama-{build}-bin-win-cpu-x64.zip"
+      }
+    }
+  ],
+  "vendors": {"0x10de": "nvidia", "0x1002": "amd", "0x1022": "amd", "0x8086": "intel"},
+  "memory": {
+    "integrated": {"share_of_free": 0.6, "keep_ram_mb": 4096},
+    "discrete": {"keep_free_mb": 512},
+    "cpu": {"keep_ram_mb": 4096},
+    "overhead": {"fraction": 0.08, "fixed_mb": 700}
+  }
+}

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Forge</title>
+<link rel="stylesheet" href="/start.css">
+</head>
+<body>
+<main>
+  <header><img src="/icon.svg" alt="" width="40" height="40"><h1>Forge</h1></header>
+  <section class="card">
+    <h2>Your laptop</h2>
+    <p>The laptop's private address (the one ending in .ts.net). You sign in with the laptop's password and authenticator code; nothing secret is kept on the phone.</p>
+    <form action="/connect" method="get">
+      <input name="host" id="host" placeholder="laptop.your-tailnet.ts.net" autocapitalize="off" autocomplete="off" spellcheck="false" required pattern="[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+\.ts\.net">
+      <button type="submit">Open Forge</button>
+    </form>
+  </section>
+  <section>
+    <h2>On this phone</h2>
+    <p class="note">These run with no laptop at all. Their saves stay on the phone.</p>
+    <div id="apps" class="grid"></div>
+  </section>
+</main>
+<script src="/start.js"></script>
+</body>
+</html>

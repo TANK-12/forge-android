@@ -1,0 +1,18 @@
+:root { color-scheme: dark; --bg: #0b0d12; --card: #141821; --line: #262c38; --text: #e8ebf2; --dim: #9aa3b5; --live: #7cc8a4; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 system-ui, sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 16px 32px; }
+header { display: flex; align-items: center; gap: 12px; }
+h1 { font-size: 24px; margin: 8px 0; }
+h2 { font-size: 18px; margin: 20px 0 6px; }
+p, .note { color: var(--dim); margin: 0 0 12px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 4px 16px 16px; }
+form { display: flex; gap: 8px; flex-wrap: wrap; }
+input { flex: 1 1 220px; min-height: 46px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--text); padding: 10px 12px; font-size: 16px; }
+button { min-height: 46px; border: 0; border-radius: 12px; padding: 0 20px; background: var(--live); color: #08130e; font-weight: 700; font-size: 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.app { display: grid; grid-template-columns: 36px 1fr; grid-template-areas: "icon title" "line line"; align-items: center; gap: 4px 10px; padding: 12px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent); color: var(--text); text-decoration: none; }
+.icon { grid-area: icon; font-size: 26px; line-height: 1; }
+.app strong { grid-area: title; }
+.app small { grid-area: line; }
+small { color: var(--dim); }
