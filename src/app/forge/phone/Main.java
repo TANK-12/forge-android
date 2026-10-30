@@ -1,15 +1,21 @@
 package app.forge.phone;
 
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.PowerManager;
+import android.view.View;
+import android.view.ViewGroup;
+import android.webkit.JavascriptInterface;
 import android.webkit.CookieManager;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -18,6 +24,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 import android.widget.Toast;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -32,6 +39,12 @@ import java.util.Map;
  * https origin (start.offline.forge, focus.offline.forge, ...) that never
  * reaches the network. The laptop's phone hub opens at the saved address;
  * its sign-in is the laptop's, nothing secret is kept in the app.
+ *
+ * ForgeAndroid.profile() tells a page how strong this phone is (memory,
+ * processor, Android's thermal status, battery and battery saver; nothing
+ * that names the phone or its owner), so Forge scales its heavy features to
+ * it (shared/perf/device.json, Relay task 596). A page's fullscreen request
+ * (a game) fills the screen with the system bars hidden; Back leaves it.
  */
 public class Main extends Activity {
   static final String LOCAL = ".offline.forge";
@@ -39,6 +52,9 @@ public class Main extends Activity {
   WebView web;
   SharedPreferences prefs;
   ValueCallback<Uri[]> picking;
+  FrameLayout root;
+  View full;
+  WebChromeClient.CustomViewCallback fullDone;
 
   @Override
   protected void onCreate(Bundle saved) {
@@ -56,7 +72,10 @@ public class Main extends Activity {
     web.setWebViewClient(new Client());
     web.setWebChromeClient(new Chrome());
     web.setDownloadListener((url, agent, disposition, mime, length) -> download(url, agent, mime));
-    setContentView(web);
+    web.addJavascriptInterface(new Device(), "ForgeAndroid");
+    root = new FrameLayout(this);
+    root.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    setContentView(root);
     if (saved != null) web.restoreState(saved);
     else web.loadUrl("https://start" + LOCAL + "/?host=" + Uri.encode(laptop()));
   }
@@ -69,7 +88,8 @@ public class Main extends Activity {
 
   @Override
   public void onBackPressed() {
-    if (web.canGoBack()) web.goBack();
+    if (full != null) leaveFull();
+    else if (web.canGoBack()) web.goBack();
     else super.onBackPressed();
   }
 
@@ -184,7 +204,62 @@ public class Main extends Activity {
     return "application/octet-stream";
   }
 
+  void leaveFull() {
+    if (full == null) return;
+    root.removeView(full);
+    full = null;
+    getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+    web.setVisibility(View.VISIBLE);
+    if (fullDone != null) fullDone.onCustomViewHidden();
+    fullDone = null;
+  }
+
+  /** How strong this phone is, as JSON in device.json's profile keys. */
+  class Device {
+    @JavascriptInterface
+    public String profile() {
+      StringBuilder out = new StringBuilder("{");
+      ActivityManager am = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+      ActivityManager.MemoryInfo mem = new ActivityManager.MemoryInfo();
+      am.getMemoryInfo(mem);
+      out.append("\"memory_gb\":").append(Math.round(mem.totalMem / 1073741824.0 * 10) / 10.0);
+      out.append(",\"cores\":").append(Runtime.getRuntime().availableProcessors());
+      out.append(",\"low_ram\":").append(am.isLowRamDevice());
+      PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+      out.append(",\"power_save\":").append(pm.isPowerSaveMode());
+      if (Build.VERSION.SDK_INT >= 29) out.append(",\"thermal\":").append(pm.getCurrentThermalStatus());
+      BatteryManager bm = (BatteryManager) getSystemService(BATTERY_SERVICE);
+      int level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+      if (level >= 0 && level <= 100) {
+        out.append(",\"battery\":").append(level);
+        out.append(",\"charging\":").append(bm.isCharging());
+      }
+      out.append(",\"android\":").append(Build.VERSION.SDK_INT);
+      return out.append("}").toString();
+    }
+  }
+
   class Chrome extends WebChromeClient {
+    @Override
+    public void onShowCustomView(View view, CustomViewCallback done) {
+      if (full != null) {
+        done.onCustomViewHidden();
+        return;
+      }
+      full = view;
+      fullDone = done;
+      root.addView(view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+      web.setVisibility(View.INVISIBLE);
+      getWindow().getDecorView().setSystemUiVisibility(
+          View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+              | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+    }
+
+    @Override
+    public void onHideCustomView() {
+      leaveFull();
+    }
+
     @Override
     public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
       if (picking != null) picking.onReceiveValue(null);

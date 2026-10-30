@@ -21,3 +21,24 @@ fetch("/apps.json")
       grid.append(a);
     }
   });
+
+// How strong this phone is (shared/perf/device.json, read through the APK's
+// ForgeAndroid bridge): the laptop's phone hub uses the same answer to fold
+// away apps too heavy for it.
+if (window.ForgeDevice) {
+  ForgeDevice.start("/device.json").then((d) => {
+    const tier = d.registry.tiers[d.tier] || {};
+    document.getElementById("device-now").textContent = `${tier.label || d.tier}: ${d.auto ? `because ${d.why}` : "picked in Forge"}. ${tier.about || ""}`;
+    const p = d.profile, facts = [];
+    if (p.memory_gb) facts.push(`${p.memory_gb} GB memory`);
+    if (p.cores) facts.push(`${p.cores} processor threads`);
+    if (p.battery !== undefined) facts.push(`battery ${p.battery}%${p.charging ? " charging" : ""}`);
+    // Android's PowerManager thermal status, 0 (none) to 6 (shutdown)
+    const heat = ["running cool", "slightly warm", "warm", "hot", "very hot", "very hot", "very hot"];
+    if (p.thermal !== undefined) facts.push(heat[p.thermal] || "warm");
+    if (p.power_save) facts.push("battery saver on");
+    facts.push(`${(d.registry.forms[d.form] || {}).label || d.form} screen`);
+    document.getElementById("device-facts").textContent = facts.join(", ");
+    document.getElementById("device").hidden = false;
+  }).catch(() => {});
+}

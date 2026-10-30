@@ -19,6 +19,9 @@ trap 'rm -rf "${STAGE:?}"' EXIT
 "$HERE/../.venv/bin/python" "$HERE/../build_offline.py"
 mkdir -p "$STAGE/assets"
 cp -r "$HERE/assets/start" "$STAGE/assets/start"
+# device strength rules and code (shared/perf/device.json, Relay task 596)
+cp "$HERE/../../shared/forge_device.js" "$STAGE/assets/start/device.js"
+cp "$HERE/../../shared/perf/device.json" "$STAGE/assets/start/device.json"
 "$HERE/../.venv/bin/python" - "$HERE/../offline" "$STAGE/assets" <<'PY'
 import json, shutil, sys
 from pathlib import Path
