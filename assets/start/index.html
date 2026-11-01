@@ -9,22 +9,51 @@
 <body>
 <main>
   <header><img src="/icon.svg" alt="" width="40" height="40"><h1>Forge</h1></header>
-  <section class="card">
-    <h2>Your laptop</h2>
-    <p>The laptop's private address (the one ending in .ts.net). You sign in with the laptop's password and authenticator code; nothing secret is kept on the phone.</p>
+
+  <section class="card" id="home" hidden>
+    <h2>Your computer</h2>
+    <p id="home-line"></p>
+    <p class="err" id="home-error" hidden></p>
+    <div class="row">
+      <a class="button" href="/open" id="home-open">Open Forge</a>
+      <a class="button quiet" href="/forget" id="home-forget">Forget this computer</a>
+    </div>
+    <div id="hub-apps" class="grid"></div>
+  </section>
+
+  <section class="card" id="pair" hidden>
+    <h2>Pair with your computer</h2>
+    <p>On the computer, open Forge, then Devices, Phones. Turn on the phone link and choose Show a pairing code. The phone and the computer must be on the same Wi-Fi.</p>
+    <p class="note">Scan the picture under the code with the phone's camera, or paste the pairing link, or type what Devices shows.</p>
+    <input id="link" placeholder="Paste the pairing link (forge-phone://...)" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Pairing link">
+    <form action="/pair" method="get" id="pair-form">
+      <label>Address <input name="host" id="pair-host" placeholder="192.168.1.20" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" required></label>
+      <label>Check code <input name="check" id="pair-check" placeholder="ABCD-EFGH-JKLM-NPQR" autocapitalize="characters" autocomplete="off" spellcheck="false" required></label>
+      <label>Pairing code <input name="code" id="pair-code" placeholder="K7QM-2XPA" autocapitalize="characters" autocomplete="off" spellcheck="false" required></label>
+      <label>A name for this phone <input name="name" id="pair-name" placeholder="My phone" maxlength="40" autocomplete="off"></label>
+      <button type="submit" id="pair-go">Pair</button>
+    </form>
+    <p class="err" id="pair-error" role="alert" hidden></p>
+    <p class="note">The check code proves the address is your computer: the app trusts its certificate only when they match, and nothing is sent before that. Only home-network addresses are used.</p>
+  </section>
+
+  <details class="card" id="owner">
+    <summary>Your own laptop over Tailscale</summary>
+    <p>For Forge's owner: the laptop's private address (the one ending in .ts.net). You sign in with the laptop's password and authenticator code; nothing secret is kept on the phone.</p>
     <form action="/connect" method="get">
-      <input name="host" id="host" placeholder="laptop.your-tailnet.ts.net" autocapitalize="off" autocomplete="off" spellcheck="false" required pattern="[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+\.ts\.net">
+      <input name="host" id="host" placeholder="laptop.your-tailnet.ts.net" autocapitalize="off" autocomplete="off" spellcheck="false" required pattern="[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+\.ts\.net" aria-label="Tailscale address">
       <button type="submit">Open Forge</button>
     </form>
-  </section>
+  </details>
+
   <section class="card" id="device" hidden>
     <h2>This phone</h2>
     <p id="device-now"></p>
     <p class="note" id="device-facts"></p>
   </section>
-  <section>
+  <section id="local" hidden>
     <h2>On this phone</h2>
-    <p class="note">These run with no laptop at all. Their saves stay on the phone.</p>
+    <p class="note">These run with no computer at all. Their saves stay on the phone.</p>
     <div id="apps" class="grid"></div>
   </section>
 </main>

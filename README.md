@@ -2,14 +2,24 @@
 
 A small Android app for Forge, the desktop tool hub. One WebView:
 
-- **Start page**: type your laptop's private address (a Tailscale name ending
-  in `.ts.net`), then sign in with the laptop's password and authenticator
-  code. Nothing secret is kept on the phone; the laptop answers only a
-  signed-in phone.
-- **On this phone**: a few Forge apps bundled in the APK that run with no
-  laptop at all (Arcade, Drift Peaks, Focus). Their saves stay on the phone.
-- Links to other sites open in the phone's browser. Downloads from the laptop
-  go to the phone's Downloads folder.
+- **Pair with your computer** (home Wi-Fi): on the computer open Forge,
+  Devices, Phones, switch on the phone link and choose Show a pairing code.
+  Scan the app's picture with the phone's camera (a `forge-phone://pair`
+  link), paste that link, or type the address, check code and pairing code.
+  The app trusts the computer's own certificate only when it matches the
+  check code, and sends nothing before that; it keeps only the computer's
+  address, that certificate's fingerprint and the sign-in cookie the
+  computer gives it (no password). Home-network addresses only. The start
+  page then lists the apps the computer offers this phone. If the computer
+  answers with another certificate, the app refuses it: forget the computer
+  and pair again. Forget this computer also signs the phone out there.
+- **Your own laptop over Tailscale** (the owner's way, folded away): type the
+  laptop's Tailscale name ending in `.ts.net`, then sign in with its
+  password and authenticator code.
+- **On this phone**: Forge apps bundled in the APK that run with no computer
+  at all (Focus). Their saves stay on the phone.
+- Links to other sites open in the phone's browser. Downloads from the
+  computer go to the phone's Downloads folder.
 
 Android 8.0 (API 26) or newer. No cleartext traffic, no backups of app data.
 
@@ -18,8 +28,10 @@ Android 8.0 (API 26) or newer. No cleartext traffic, no backups of app data.
 Download `forge.apk` from the [Releases](../../releases) page and open it.
 Android asks once to allow installs from your browser.
 
-**Status**: built and signature-checked, not yet tested on a real phone or an
-emulator. Please report anything that looks wrong.
+**Status** (0.3): pairing, opening apps, a changed certificate being refused,
+forgetting and pairing again were checked in an Android 14 emulator against
+a test computer. Not yet tried on a real phone. Please report anything that
+looks wrong.
 
 ## Lend the phone to the laptop's AI (`termux/`)
 

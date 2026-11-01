@@ -27,7 +27,7 @@ sys.path.insert(0, str(PHONE))
 import build_offline  # noqa: E402
 
 REPO = "TANK-12/forge-android"
-ABOUT = "Forge for Android: a phone app that signs in to Forge on your laptop"
+ABOUT = "Forge for Android: a phone app that pairs with Forge on your computer over home Wi-Fi"
 LINK_FILES = ["forge_link.py", "forge_tunnel.py", "forge_gpu.py", "llama_backends.json"]
 PRIVATE = build_offline.PRIVATE[1:] + [re.compile(r"tail[0-9a-f]{6}\.ts\.net", re.I)]
 

@@ -25,12 +25,25 @@ cp "$HERE/../../shared/perf/device.json" "$STAGE/assets/start/device.json"
 "$HERE/../.venv/bin/python" - "$HERE/../offline" "$STAGE/assets" <<'PY'
 import json, shutil, sys
 from pathlib import Path
-offline, assets = Path(sys.argv[1]), Path(sys.argv[2])
+offline, assets = Path(sys.argv[1]).resolve(), Path(sys.argv[2])
+forge = offline.parent.parent
+sys.path.insert(0, str(forge / "shared"))
+import forge_presets
 registry = json.loads((offline.parent / "phone_apps.json").read_text())["apps"]
+# The published APK is for a released Forge: only apps a paired phone may
+# have ("paired": true) that the public listing does not hide (Relay task
+# 666; the games stay on the owner's own hub).
+release = json.loads((forge / "release" / "release.json").read_text())
+sections = {}
+for m in (forge / "apps").glob("*/forge_app.json"):
+    data = json.loads(m.read_text())
+    sections[data.get("name") or m.parent.name] = str(data.get("section") or "")
+hidden = forge_presets.unlisted(release, sections)
 apps = []
 for meta in sorted(offline.glob("*/forge_phone.json")):
     name = meta.parent.name
-    if not registry.get(name, {}).get("offline"):
+    entry = registry.get(name, {})
+    if not entry.get("offline") or entry.get("paired") is not True or name in hidden:
         continue
     shutil.copytree(meta.parent / "www", assets / "offline" / name / "www")
     apps.append(json.loads(meta.read_text()) | {"name": name})
