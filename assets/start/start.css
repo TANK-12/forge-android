@@ -114,3 +114,6 @@ main > .cols { animation-delay: 0.1s; }
 .wall[aria-selected="true"] { border-color: var(--live); }
 .wall .on { position: absolute; top: 8px; right: 8px; padding: 2px 8px; border-radius: 999px; background: var(--live); color: var(--on-live); font-size: 12px; text-shadow: none; }
 .wall-actions { margin: 4px 0 8px; }
+.wall-steps { margin: 4px 0 0; padding-left: 22px; }
+.wall-steps li { margin: 3px 0; }
+.wall-steps[hidden] { display: none; }

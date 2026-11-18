@@ -57,6 +57,8 @@ public final class PlayerActivity extends Activity implements Bridge.Actions {
     web.onResume();
     listen();
     Host.js(web, "resume()");
+    String said = app.forge.look.LiveWall.back(this); // task 1334: on now, or where to tap again
+    if (said != null) Host.js(web, "note(" + org.json.JSONObject.quote(said) + ")");
   }
 
   @Override protected void onPause() {
@@ -104,10 +106,12 @@ public final class PlayerActivity extends Activity implements Bridge.Actions {
     Prefs.store(this).edit().putString(Prefs.WALL, presetId).apply();
     VizWidget.refreshAll(this);
     // task 1330: the tablet's own wallpaper screen, however its maker named it
-    int opened = app.forge.look.LiveWall.open(this, new ComponentName(this, VizWallpaper.class));
-    String hint = app.forge.look.LiveWall.hint(opened, "Forge visualiser");
-    if (hint != null) Host.js(web, "note(" + org.json.JSONObject.quote(hint) + ")");
-    else if (opened == app.forge.look.LiveWall.NONE) {
+    // task 1334: exactly where to tap, for the way that really opened
+    app.forge.look.LiveWall.Plan said = app.forge.look.LiveWall.open(this, new ComponentName(this, VizWallpaper.class));
+    int opened = said.kind;
+    if (opened != app.forge.look.LiveWall.NONE && !said.line().isEmpty()) {
+      Host.js(web, "note(" + org.json.JSONObject.quote(said.line()) + ")");
+    } else if (opened == app.forge.look.LiveWall.NONE) {
       Host.js(web, "note('Moving wallpapers are off on this tablet: the visualiser plays here, full screen')");
     }
   }

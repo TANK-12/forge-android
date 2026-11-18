@@ -6,24 +6,38 @@ import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.content.res.Resources;
+import android.widget.Toast;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
- * Opening Android's screen that sets a live wallpaper, on any tablet (Relay
- * task 1330). Some makers' Android leaves out the standard picker, or keeps
- * it but hides it from the usual intents, so Forge said "no live wallpaper
- * picker" on Emerson's tablet. This tries, most direct first: the confirm
- * screen for this wallpaper, the same screen reached by name when it lacks
- * the default category, the list of live wallpapers (the same two ways), the
- * standard picker by name, and last the maker's own wallpaper app (through
- * SET_WALLPAPER), where live wallpapers usually have their own section. A
- * tablet with none of them, or with live wallpapers off altogether, gets
- * {@link #NONE} and the caller offers a still picture instead of a complaint.
+ * Opening Android's screen that sets a live wallpaper, on any tablet, and
+ * saying exactly where to tap in it (Relay tasks 1330 and 1334). Some makers'
+ * Android leaves out the standard picker, or keeps it but hides it from the
+ * usual intents. This tries, most direct first: the confirm screen for this
+ * wallpaper, the same screen reached by name when it lacks the default
+ * category, the list of live wallpapers (the same two ways), the standard
+ * picker by name, a live wallpaper page inside the maker's wallpaper app,
+ * and last the maker's wallpaper app itself (through SET_WALLPAPER).
+ *
+ * <p>{@link #plan} words what a tap does on this tablet from what is really
+ * there: the name the tablet shows for the app Forge opens, the name that
+ * app itself uses for its live wallpaper section (read from its own words,
+ * "Live wallpapers" when it has none Forge can find) and the name the
+ * tablet lists Forge's wallpaper under. A tablet with no way at all, or with
+ * live wallpapers off altogether, gets {@link #NONE} and the caller offers a
+ * still picture instead of a complaint.
  */
 public final class LiveWall {
   /** What a tap opens. */
@@ -33,6 +47,22 @@ public final class LiveWall {
     {"com.android.wallpaper.livepicker", "com.android.wallpaper.livepicker.LiveWallpaperChange"},
     {"com.android.wallpaper.livepicker", "com.android.wallpaper.livepicker.LiveWallpaperActivity"},
   };
+
+  /** Names a wallpaper app may give its live wallpaper section, in its own strings. */
+  private static final String[] SECTION_IDS = {
+    "live_wallpapers", "live_wallpaper", "live_wallpapers_title", "live_wallpaper_title",
+    "live_wallpapers_category_title", "live_wallpaper_category_title", "category_live_wallpapers",
+    "category_live_wallpaper", "live_wallpaper_list_title", "live_wallpaper_picker_title",
+    "dynamic_wallpapers", "dynamic_wallpaper", "live_wallpaper_label",
+  };
+
+  /** A page inside a wallpaper app that lists live wallpapers, by its class name. */
+  private static final Pattern INSIDE = Pattern.compile(
+      "(?i).*live.*(wall|paper|picker|list|chooser|select|gallery).*");
+  private static final Pattern NOT_INSIDE = Pattern.compile(
+      "(?i).*(preview|crop|setting|detail|service|edit|apply|confirm|receiver|provider).*");
+
+  private static final String PREFS = "forge_live_wall";
 
   private LiveWall() {}
 
@@ -58,13 +88,46 @@ public final class LiveWall {
         if (a.exported && a.enabled && !has(out, cn)) {
           boolean isChange = n[1].endsWith("Change");
           Intent i = new Intent(isChange ? change : list).setComponent(cn);
-          out.add(new Way(i, isChange ? CONFIRM : LIST, true));
+          out.add(new Way(i, isChange ? CONFIRM : LIST, true, label(pm, a)));
         }
       } catch (PackageManager.NameNotFoundException e) {
         // not on this tablet
       }
     }
+    int at = out.size();
     add(out, c, pm, new Intent(Intent.ACTION_SET_WALLPAPER), WALLPAPER_APP);
+    // the live wallpaper page inside the wallpaper app, when it has one by name
+    if (out.size() > at && out.get(at).sys) {
+      Way app = out.get(at);
+      Set<String> skip = skipped(c);
+      List<Way> inside = new ArrayList<>();
+      for (ActivityInfo a : activities(pm, app.intent.getComponent().getPackageName())) {
+        ComponentName cn = new ComponentName(a.packageName, a.name);
+        String simple = a.name.substring(a.name.lastIndexOf('.') + 1);
+        if (!INSIDE.matcher(simple).matches() || NOT_INSIDE.matcher(simple).matches()) continue;
+        if (skip.contains(cn.flattenToString()) || has(out, cn)) continue;
+        Way w = new Way(new Intent(Intent.ACTION_MAIN).setComponent(cn), LIST, true, app.label);
+        w.inside = true;
+        inside.add(w);
+      }
+      out.addAll(at, inside);
+    }
+    return out;
+  }
+
+  /** The exported, enabled activities of `pkg` that any app may start. */
+  private static List<ActivityInfo> activities(PackageManager pm, String pkg) {
+    List<ActivityInfo> out = new ArrayList<>();
+    try {
+      PackageInfo p = pm.getPackageInfo(pkg, PackageManager.GET_ACTIVITIES);
+      if (p.activities != null) {
+        for (ActivityInfo a : p.activities) {
+          if (a.exported && a.enabled && a.permission == null) out.add(a);
+        }
+      }
+    } catch (PackageManager.NameNotFoundException | RuntimeException e) {
+      // hidden from Forge or gone: no page inside it
+    }
     return out;
   }
 
@@ -84,16 +147,17 @@ public final class LiveWall {
       if (has(out, cn)) continue;
       boolean sys = a.applicationInfo != null
           && (a.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
-      (sys ? system : other).add(new Way(new Intent(base).setComponent(cn), kind, sys));
+      String name = label(pm, r);
+      (sys ? system : other).add(new Way(new Intent(base).setComponent(cn), kind, sys, name));
     }
-    out.addAll(system);
-    out.addAll(other);
+    List<Way> found2 = new ArrayList<>(system);
+    found2.addAll(other);
     if (kind == WALLPAPER_APP) {
       // a gallery also answers SET_WALLPAPER but only crops a photo: wallpaper apps first
-      List<Way> apps = new ArrayList<>(out.subList(out.size() - system.size() - other.size(), out.size()));
-      out.removeAll(apps);
-      apps.sort((x, y) -> score(y) - score(x));
-      for (Way w : apps) if (score(w) > 0) out.add(w); // a gallery never lists live wallpapers
+      found2.sort((x, y) -> score(y) - score(x));
+      for (Way w : found2) if (score(w) > 0) out.add(w); // a gallery never lists live wallpapers
+    } else {
+      out.addAll(found2);
     }
   }
 
@@ -101,7 +165,7 @@ public final class LiveWall {
       1 for anything else (an installed wallpaper app cannot set Forge's). */
   static int score(Way w) {
     ComponentName cn = w.intent.getComponent();
-    String n = cn == null ? "" : (cn.getPackageName() + "/" + cn.getClassName()).toLowerCase(java.util.Locale.ROOT);
+    String n = cn == null ? "" : (cn.getPackageName() + "/" + cn.getClassName()).toLowerCase(Locale.ROOT);
     // the gallery first: AOSP's own crops photos in a class named Wallpaper
     if (n.contains("gallery") || n.contains("photo") || n.contains("album")) return 0;
     if (w.sys && (n.contains("wallpaper") || n.contains("theme"))) return 2;
@@ -111,6 +175,27 @@ public final class LiveWall {
   private static boolean has(List<Way> out, ComponentName cn) {
     for (Way w : out) if (cn.equals(w.intent.getComponent())) return true;
     return false;
+  }
+
+  /** The name the tablet shows for an activity: its own label, else its app's. */
+  private static String label(PackageManager pm, ResolveInfo r) {
+    try {
+      CharSequence s = r.loadLabel(pm);
+      if (s != null && s.toString().trim().length() > 0) return s.toString().trim();
+    } catch (RuntimeException e) {
+      // no label
+    }
+    return r.activityInfo == null ? "" : label(pm, r.activityInfo);
+  }
+
+  private static String label(PackageManager pm, ActivityInfo a) {
+    try {
+      CharSequence s = a.loadLabel(pm);
+      if (s == null || s.toString().trim().isEmpty()) s = a.applicationInfo.loadLabel(pm);
+      return s == null ? "" : s.toString().trim();
+    } catch (RuntimeException e) {
+      return "";
+    }
   }
 
   /** What a tap would open on this tablet, for the start page to word its buttons. */
@@ -124,26 +209,152 @@ public final class LiveWall {
     return kind == CONFIRM ? "confirm" : kind == LIST ? "list" : kind == WALLPAPER_APP ? "app" : "none";
   }
 
-  /** Open the first way that starts; what opened, or {@link #NONE} when nothing could. */
-  public static int open(Activity a, ComponentName service) {
-    List<Way> all = ways(a, service);
+  /** What a tap does on this tablet, in words from the tablet itself. */
+  public static Plan plan(Context c, ComponentName service) {
+    List<Way> all = ways(c, service);
+    return all.isEmpty() ? new Plan(NONE, "", "", entry(c, service), false, null)
+        : plan(c, service, all, all.get(0));
+  }
+
+  /** The words for opening `w`, one of `all`. */
+  private static Plan plan(Context c, ComponentName service, List<Way> all, Way w) {
+    PackageManager pm = c.getPackageManager();
+    String entry = entry(c, service);
+    if (w.kind == WALLPAPER_APP && chooses(all)) {
+      // Android asks which app: name only the system's own (another app
+      // cannot set Forge's wallpaper); the section depends on the pick
+      List<String> apps = new ArrayList<>();
+      for (Way x : all) {
+        if (x.kind == WALLPAPER_APP && x.sys && !x.label.isEmpty() && !apps.contains(x.label)) apps.add(x.label);
+      }
+      return new Plan(WALLPAPER_APP, "", "", entry, false, apps);
+    }
+    ComponentName cn = w.intent.getComponent();
+    return new Plan(w.kind, w.label, section(pm, cn == null ? "" : cn.getPackageName()), entry,
+        w.inside, null);
+  }
+
+  /** The name the tablet lists Forge's wallpaper under, told apart from a
+      wallpaper of the same name from another app (the old Forge Theme app). */
+  static String entry(Context c, ComponentName service) {
+    PackageManager pm = c.getPackageManager();
+    String entry = "";
+    try {
+      CharSequence s = pm.getServiceInfo(service, 0).loadLabel(pm);
+      entry = s == null ? "" : s.toString().trim();
+    } catch (PackageManager.NameNotFoundException | RuntimeException e) {
+      // unnamed: the plain name below
+    }
+    if (entry.isEmpty()) return "Forge's wallpaper";
+    try {
+      Intent any = new Intent("android.service.wallpaper.WallpaperService");
+      for (ResolveInfo r : pm.queryIntentServices(any, PackageManager.GET_META_DATA)) {
+        if (r.serviceInfo == null || service.getPackageName().equals(r.serviceInfo.packageName)) continue;
+        CharSequence s = r.serviceInfo.loadLabel(pm);
+        if (s == null || !entry.equalsIgnoreCase(s.toString().trim())) continue;
+        CharSequence other = r.serviceInfo.applicationInfo.loadLabel(pm);
+        String app = c.getApplicationInfo().loadLabel(pm).toString();
+        return entry + " (the one from " + app
+            + (other == null ? ")" : ", not from " + other + ")");
+      }
+    } catch (RuntimeException e) {
+      // no list of wallpapers: the plain name
+    }
+    return entry;
+  }
+
+  /** The wallpaper app's own name for its live wallpaper section, or "". */
+  static String section(PackageManager pm, String pkg) {
+    if (pkg.isEmpty()) return "";
+    try {
+      Resources r = pm.getResourcesForApplication(pkg);
+      for (String id : SECTION_IDS) {
+        int at = r.getIdentifier(id, "string", pkg);
+        if (at == 0) continue;
+        String s = r.getString(at).trim();
+        if (!s.isEmpty() && s.length() <= 32 && !s.contains("%")) return s;
+      }
+    } catch (PackageManager.NameNotFoundException | RuntimeException e) {
+      // its words are hidden from Forge: the usual name
+    }
+    return "";
+  }
+
+  /** Whether Android has to ask which app: several, none clearly the wallpaper app. */
+  private static boolean chooses(List<Way> all) {
     int apps = 0;
     for (Way w : all) if (w.kind == WALLPAPER_APP) apps++;
+    for (Way w : all) if (w.kind == WALLPAPER_APP) return apps > 1 && score(w) < 2;
+    return false;
+  }
+
+  /** Open the first way that starts, then say where to tap; the words for what
+      opened (its kind {@link #NONE} when nothing could). */
+  public static Plan open(Activity a, ComponentName service) {
+    List<Way> all = ways(a, service);
+    boolean choose = chooses(all);
     for (Way w : all) {
       try {
-        if (w.kind == WALLPAPER_APP && apps > 1 && score(w) < 2) {
+        if (w.kind == WALLPAPER_APP && choose) {
           // no app that is clearly the wallpaper app: Android asks which one
           a.startActivity(chooser(a, all));
         } else {
           a.startActivity(w.intent);
         }
-        return w.kind;
-      } catch (ActivityNotFoundException | SecurityException e) {
-        // the next way
+        ComponentName cn = w.intent.getComponent();
+        a.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("opened", w.inside && cn != null ? cn.flattenToString() : "")
+            .putString("service", service.flattenToString())
+            .putLong("at", System.currentTimeMillis())
+            .apply();
+        Plan said = plan(a, service, all, w);
+        // one toast, shown while Forge is still in front: Android drops a
+        // later one from the background when Forge's notifications are off
+        String line = said.line();
+        if (!line.isEmpty() && w.kind != CONFIRM) Toast.makeText(a, line, Toast.LENGTH_LONG).show();
+        return said;
+      } catch (RuntimeException e) {
+        // not there after all (ActivityNotFoundException, SecurityException): the next way
       }
     }
-    return NONE;
+    return new Plan(NONE, "", "", entry(a, service), false, null);
   }
+
+  /**
+   * Back in Forge after {@link #open}: what to say (the wallpaper is on, or
+   * where to tap again), or null when Forge opened nothing. A guessed page
+   * inside the wallpaper app that did not lead to the wallpaper is skipped
+   * from then on, so the next tap opens the app itself.
+   */
+  public static String back(Context c) {
+    SharedPreferences p = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    long at = p.getLong("at", 0);
+    ComponentName service = ComponentName.unflattenFromString(p.getString("service", ""));
+    String opened = p.getString("opened", "");
+    p.edit().remove("at").remove("opened").remove("service").apply();
+    if (at == 0 || service == null) return null;
+    boolean active = false;
+    try {
+      android.app.WallpaperInfo info = WallpaperManager.getInstance(c).getWallpaperInfo();
+      active = info != null && service.equals(info.getComponent());
+    } catch (RuntimeException e) {
+      // unknown: said as not yet
+    }
+    Plan plan = plan(c, service);
+    if (active) return plan.entry + " is on now. From here Forge switches it with no questions.";
+    if (opened != null && !opened.isEmpty()) {
+      Set<String> skip = new HashSet<>(skipped(c));
+      skip.add(opened);
+      p.edit().putStringSet("skip", skip).apply();
+      return "Not set yet. Next time Forge opens the app itself: " + plan(c, service).line();
+    }
+    return "Not set yet. " + plan.line();
+  }
+
+  private static Set<String> skipped(Context c) {
+    return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet("skip", new HashSet<>());
+  }
+
 
   /** Android's chooser over the wallpaper apps kept, without the galleries dropped. */
   private static Intent chooser(Context c, List<Way> kept) {
@@ -154,26 +365,97 @@ public final class LiveWall {
       if (!has(kept, cn)) drop.add(cn);
     }
     return Intent.createChooser(new Intent(Intent.ACTION_SET_WALLPAPER),
-            "Open the wallpaper app, then Live wallpapers")
+            "Pick the wallpaper app, then Live wallpapers")
         .putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, drop.toArray(new ComponentName[0]));
   }
 
-  /** What to say after `open`, naming the wallpaper to pick; null when nothing needs saying. */
-  public static String hint(int kind, String name) {
-    if (kind == LIST) return "Pick " + name + " in the list";
-    if (kind == WALLPAPER_APP) return "Open Live wallpapers there, then pick " + name;
-    return null;
+  /** What a tap does here, worded from the tablet's own names. */
+  public static final class Plan {
+    public final int kind;
+    /** The name the tablet shows for the app or screen Forge opens. */
+    public final String app;
+    /** That app's own name for its live wallpaper section ("" when not found). */
+    public final String section;
+    /** The name the tablet lists Forge's wallpaper under. */
+    public final String entry;
+    /** Forge opens the live wallpaper page inside the wallpaper app. */
+    public final boolean inside;
+    /** When Android asks which app: the apps it offers; otherwise null. */
+    public final List<String> apps;
+
+    Plan(int kind, String app, String section, String entry, boolean inside, List<String> apps) {
+      this.kind = kind;
+      this.app = app;
+      this.section = section;
+      this.entry = entry;
+      this.inside = inside;
+      this.apps = apps;
+    }
+
+    private String app() {
+      return app.isEmpty() ? "the tablet's wallpaper app" : app;
+    }
+
+    private String set() {
+      return "Set wallpaper (some tablets say Apply)";
+    }
+
+    /** The steps for the start page, in order; empty for {@link #NONE}. */
+    public List<String> steps() {
+      List<String> s = new ArrayList<>();
+      if (kind == CONFIRM) {
+        s.add("Tap Set as live wallpaper: Android shows " + entry + " full screen.");
+        s.add("Tap " + set() + ".");
+      } else if (kind == LIST) {
+        s.add(inside
+            ? "Tap Set as live wallpaper: Forge opens " + app() + " at what looks like its "
+                + (section.isEmpty() ? "live wallpapers" : section) + " page."
+            : "Tap Set as live wallpaper: Forge opens " + app() + ", the tablet's list of live wallpapers.");
+        s.add("Tap " + entry + ".");
+        s.add("Tap " + set() + ".");
+      } else if (kind == WALLPAPER_APP) {
+        s.add(apps != null && !apps.isEmpty()
+            ? "Tap Set as live wallpaper: Android asks which app. Pick " + String.join(" or ", apps) + "."
+            : "Tap Set as live wallpaper: Forge opens " + app() + ".");
+        String in = apps != null ? "that app" : app();
+        s.add(section.isEmpty()
+            ? "In " + in + ", find " + entry + ": most tablets list it under Live wallpapers"
+                + " (scroll down if it is not on the first screen)."
+            : "In " + in + ", tap " + section + ".");
+        s.add("Tap " + entry + ", then " + set() + ".");
+      }
+      if (kind != NONE) s.add("Come back to Forge: it says when " + entry + " is on.");
+      return s;
+    }
+
+    /** The same in one line, for a note or a toast. */
+    public String line() {
+      if (kind == CONFIRM) return "Android shows " + entry + ": tap " + set() + ".";
+      if (kind == LIST) return "In " + app() + ", tap " + entry + ", then " + set() + ".";
+      if (kind == WALLPAPER_APP) {
+        String where = apps != null && !apps.isEmpty() ? String.join(" or ", apps) : app();
+        return section.isEmpty()
+            ? "In " + where + ": find " + entry + " (most tablets list it under Live wallpapers),"
+                + " tap it, then " + set() + "."
+            : "In " + where + ": tap " + section + ", then " + entry + ", then " + set() + ".";
+      }
+      return "";
+    }
+
   }
 
   static final class Way {
     final Intent intent;
     final int kind;
     final boolean sys;
+    final String label;
+    boolean inside;
 
-    Way(Intent intent, int kind, boolean sys) {
+    Way(Intent intent, int kind, boolean sys, String label) {
       this.intent = intent;
       this.kind = kind;
       this.sys = sys;
+      this.label = label == null ? "" : label;
     }
   }
 }

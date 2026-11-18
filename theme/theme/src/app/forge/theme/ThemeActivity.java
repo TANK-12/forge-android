@@ -217,9 +217,8 @@ public final class ThemeActivity extends Activity {
 
   private void setWallpaper() {
     // task 1330: the tablet's own wallpaper screen, however its maker named it
-    int opened = app.forge.look.LiveWall.open(this, new ComponentName(this, ThemeWallpaper.class));
-    String hint = app.forge.look.LiveWall.hint(opened, "Forge particles");
-    if (hint != null) Toast.makeText(this, hint, Toast.LENGTH_LONG).show();
+    // it says where to tap there itself, by the tablet's own names (task 1334)
+    int opened = app.forge.look.LiveWall.open(this, new ComponentName(this, ThemeWallpaper.class)).kind;
     if (opened != app.forge.look.LiveWall.NONE) return;
     // no live wallpaper screen Forge can open: say where the still picture is
     Toast.makeText(this, "On this tablet the theme goes on as a picture: Forge, Wallpapers, Still",
@@ -395,6 +394,8 @@ public final class ThemeActivity extends Activity {
 
   @Override protected void onResume() {
     super.onResume();
+    String said = app.forge.look.LiveWall.back(this); // task 1334: on now, or where to tap again
+    if (said != null) Toast.makeText(this, said, Toast.LENGTH_LONG).show();
     if (loop != null) loop.visible(true);
     notes();
     Widgets.MusicWidget.refresh(this);

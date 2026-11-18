@@ -485,13 +485,17 @@ function showWalls() {
           ? "Forge can't open a live wallpaper screen on this tablet, so the theme goes on as a picture."
           : "Forge can't open a live wallpaper screen on this tablet; the visualiser plays full screen in its app."
         : way === "app"
-          ? `Opens the tablet's wallpaper app once: go to Live wallpapers and pick ${name}. After that Forge switches it with no questions.`
+          ? `Only once: Forge opens ${n.live_app || "the tablet's wallpaper app"}, where you pick ${name}. After that Forge switches it with no questions. Exactly where to tap:`
           : way === "list"
-            ? `Android lists its live wallpapers once: pick ${name}. After that Forge switches it with no questions.`
-            : "Android shows the wallpaper once to confirm; after that Forge switches it with no questions.";
+            ? `Only once: Forge opens ${n.live_app || "the tablet's list of live wallpapers"}, where you pick ${name}. After that Forge switches it with no questions. Exactly where to tap:`
+            : "Only once: Android shows the wallpaper to confirm. After that Forge switches it with no questions. Exactly where to tap:";
   } else {
     $("wall-note").textContent = "Pick one to see what you can do with it.";
   }
+  // task 1334: the steps in this tablet's own names (Main.java, LiveWall.Plan)
+  const steps = item && n.now !== kind && way !== "none" ? (n.live_steps || {})[kind] || [] : [];
+  $("wall-steps").replaceChildren(...steps.map((s) => el("li", "", s)));
+  $("wall-steps").hidden = !steps.length;
   $("wall-actions").replaceChildren(...actions);
 }
 

@@ -280,6 +280,15 @@ public class Main extends Activity {
           // task 1330: what "Set as live wallpaper" opens here (confirm, list, app or none)
           .put("live", app.forge.look.LiveWall.word(app.forge.look.LiveWall.way(this,
               new android.content.ComponentName(this, THEME_WALL))));
+      // task 1334: exactly where to tap, in the tablet's own names, for each wallpaper
+      JSONObject steps = new JSONObject();
+      for (String[] w : new String[][] {{"theme", THEME_WALL}, {"visualiser", VIZ_WALL}}) {
+        app.forge.look.LiveWall.Plan plan =
+            app.forge.look.LiveWall.plan(this, new android.content.ComponentName(this, w[1]));
+        steps.put(w[0], new org.json.JSONArray(plan.steps()));
+        if (w[0].equals("theme")) o.put("live_app", plan.app).put("live_section", plan.section);
+      }
+      o.put("live_steps", steps);
       return json(o.toString());
     } catch (JSONException e) {
       return json("{}");
@@ -305,10 +314,9 @@ public class Main extends Activity {
     }
     // task 1330: the tablet's own wallpaper screen, however its maker named it
     wallAsked = new String[] {viz ? "visualiser" : "theme", before};
+    // it says where to tap there itself (task 1334)
     int opened = app.forge.look.LiveWall.open(this,
-        new android.content.ComponentName(this, viz ? VIZ_WALL : THEME_WALL));
-    String hint = app.forge.look.LiveWall.hint(opened, viz ? "Forge visualiser" : "Forge particles");
-    if (hint != null) Toast.makeText(this, hint, Toast.LENGTH_LONG).show();
+        new android.content.ComponentName(this, viz ? VIZ_WALL : THEME_WALL)).kind;
     if (opened != app.forge.look.LiveWall.NONE) return;
     // no live wallpaper screen Forge can open: the pick goes back and the card
     // (reloaded) offers the still picture instead; nothing is changed unasked
@@ -1435,6 +1443,9 @@ public class Main extends Activity {
    * themselves.
    */
   void wallBack() {
+    // task 1334: on now, or exactly where to tap again
+    String said = app.forge.look.LiveWall.back(this);
+    if (said != null) Toast.makeText(this, said, Toast.LENGTH_LONG).show();
     String[] asked = wallAsked;
     wallAsked = null;
     if (asked == null) return;
