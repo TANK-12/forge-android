@@ -103,17 +103,12 @@ public final class PlayerActivity extends Activity implements Bridge.Actions {
   @Override public void wallpaper(String presetId) {
     Prefs.store(this).edit().putString(Prefs.WALL, presetId).apply();
     VizWidget.refreshAll(this);
-    Intent pick = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
-        .putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-            new ComponentName(this, VizWallpaper.class));
-    try {
-      startActivity(pick);
-    } catch (ActivityNotFoundException e) {
-      try {
-        startActivity(new Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER));
-      } catch (ActivityNotFoundException none) {
-        Host.js(web, "note('This tablet has no live wallpaper picker')");
-      }
+    // task 1330: the tablet's own wallpaper screen, however its maker named it
+    int opened = app.forge.look.LiveWall.open(this, new ComponentName(this, VizWallpaper.class));
+    String hint = app.forge.look.LiveWall.hint(opened, "Forge visualiser");
+    if (hint != null) Host.js(web, "note(" + org.json.JSONObject.quote(hint) + ")");
+    else if (opened == app.forge.look.LiveWall.NONE) {
+      Host.js(web, "note('Moving wallpapers are off on this tablet: the visualiser plays here, full screen')");
     }
   }
 

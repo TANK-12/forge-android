@@ -26,7 +26,7 @@ final class Prefs {
     size = p.getFloat(SIZE, 1f);
     speed = p.getFloat(SPEED, 1f);
     dim = p.getFloat(DIM, 0.12f);
-    fps = p.getInt(FPS, 30);
+    fps = p.getInt(FPS, 60); // task 1330: smooth by default (Battery Saver still caps it at 15)
     sound = p.getString(SOUND, "off"); // off, phone, mic
     taps = p.getBoolean(TAPS, true);
   }

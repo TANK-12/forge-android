@@ -276,7 +276,10 @@ public class Main extends Activity {
           .put("now", now)
           .put("theme", app.forge.theme.Walls.theme(this))
           .put("look", app.forge.visualiser.WallPick.look(this))
-          .put("pin", widgets != null && widgets.isRequestPinAppWidgetSupported());
+          .put("pin", widgets != null && widgets.isRequestPinAppWidgetSupported())
+          // task 1330: what "Set as live wallpaper" opens here (confirm, list, app or none)
+          .put("live", app.forge.look.LiveWall.word(app.forge.look.LiveWall.way(this,
+              new android.content.ComponentName(this, THEME_WALL))));
       return json(o.toString());
     } catch (JSONException e) {
       return json("{}");
@@ -300,23 +303,21 @@ public class Main extends Activity {
       Toast.makeText(this, "Wallpaper changed", Toast.LENGTH_SHORT).show();
       return;
     }
-    Intent i = new Intent(android.app.WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
-        .putExtra(android.app.WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-            new android.content.ComponentName(this, viz ? VIZ_WALL : THEME_WALL));
+    // task 1330: the tablet's own wallpaper screen, however its maker named it
     wallAsked = new String[] {viz ? "visualiser" : "theme", before};
-    try {
-      startActivity(i);
-    } catch (ActivityNotFoundException | SecurityException e) {
-      try {
-        startActivity(new Intent(android.app.WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER));
-        Toast.makeText(this, "Pick " + (viz ? "Forge visualiser" : "Forge particles") + " in the list",
-            Toast.LENGTH_LONG).show();
-      } catch (ActivityNotFoundException | SecurityException e2) {
-        wallBack();
-        Toast.makeText(this, "This tablet has no live wallpaper screen: use Still picture instead",
-            Toast.LENGTH_LONG).show();
-      }
+    int opened = app.forge.look.LiveWall.open(this,
+        new android.content.ComponentName(this, viz ? VIZ_WALL : THEME_WALL));
+    String hint = app.forge.look.LiveWall.hint(opened, viz ? "Forge visualiser" : "Forge particles");
+    if (hint != null) Toast.makeText(this, hint, Toast.LENGTH_LONG).show();
+    if (opened != app.forge.look.LiveWall.NONE) return;
+    // no live wallpaper screen Forge can open: the pick goes back and the card
+    // (reloaded) offers the still picture instead; nothing is changed unasked
+    wallAsked = null;
+    if (before != null && !before.isEmpty()) {
+      if (viz) app.forge.visualiser.WallPick.use(this, before);
+      else app.forge.theme.Walls.use(this, before);
     }
+    if (web != null) web.evaluateJavascript("typeof loadWalls === 'function' && loadWalls()", null);
   }
 
   /** A theme's picture as a plain wallpaper on the home screen, the lock screen or both. */

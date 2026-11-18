@@ -460,18 +460,35 @@ function showWalls() {
   const id = walls.pick[kind];
   const item = list.find((x) => x.id === id);
   const actions = [];
+  // task 1330: what this tablet's Android has for live wallpapers (Main.java,
+  // LiveWall): its confirm screen, its list, the maker's wallpaper app, or none
+  const way = n.live || "confirm";
+  const name = kind === "theme" ? "Forge particles" : "Forge visualiser";
   if (item) {
     const live = new URLSearchParams({ kind, id });
     const ours = n.now === kind;
-    actions.push(wallButton(ours ? "Use it now" : "Set as live wallpaper", `/wall-live?${live}`));
+    if (way !== "none" || ours) {
+      actions.push(wallButton(ours ? "Use it now" : "Set as live wallpaper", `/wall-live?${live}`));
+    } else if (kind === "visualiser") {
+      actions.push(wallButton("Open the visualiser", "/visualiser"));
+    }
     if (kind === "theme") {
-      for (const [where, label] of [["home", "Still: home screen"], ["lock", "Still: lock screen"], ["both", "Still: both"]]) {
-        actions.push(wallButton(label, `/wall-still?${new URLSearchParams({ id, where })}`, true));
+      const quiet = way !== "none" || ours;
+      for (const [where, label] of [["both", "Still: both screens"], ["home", "Still: home screen"], ["lock", "Still: lock screen"]]) {
+        actions.push(wallButton(label, `/wall-still?${new URLSearchParams({ id, where })}`, quiet || where !== "both"));
       }
     }
     $("wall-note").textContent = ours
       ? "Changes at once: this Forge wallpaper is already on."
-      : "Android shows the wallpaper once to confirm; after that Forge switches it with no questions.";
+      : way === "none"
+        ? kind === "theme"
+          ? "Forge can't open a live wallpaper screen on this tablet, so the theme goes on as a picture."
+          : "Forge can't open a live wallpaper screen on this tablet; the visualiser plays full screen in its app."
+        : way === "app"
+          ? `Opens the tablet's wallpaper app once: go to Live wallpapers and pick ${name}. After that Forge switches it with no questions.`
+          : way === "list"
+            ? `Android lists its live wallpapers once: pick ${name}. After that Forge switches it with no questions.`
+            : "Android shows the wallpaper once to confirm; after that Forge switches it with no questions.";
   } else {
     $("wall-note").textContent = "Pick one to see what you can do with it.";
   }

@@ -179,7 +179,7 @@ public final class ThemeActivity extends Activity {
 
     section("Frame rate");
     Flow fps = new Flow(this);
-    for (int f : new int[] {15, 20, 30, 45, 60}) {
+    for (int f : new int[] {15, 20, 30, 45, 60, 90, 120}) {
       fps.addView(choice(f + " a second", p.fps == f, v -> saveInt(Prefs.FPS, f)));
     }
     controls.addView(fps);
@@ -216,18 +216,14 @@ public final class ThemeActivity extends Activity {
   }
 
   private void setWallpaper() {
-    Intent i = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
-        .putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-            new ComponentName(this, ThemeWallpaper.class));
-    try {
-      startActivity(i);
-    } catch (ActivityNotFoundException e) {
-      try {
-        startActivity(new Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER));
-      } catch (ActivityNotFoundException e2) {
-        Toast.makeText(this, "This home screen has no live wallpaper picker", Toast.LENGTH_LONG).show();
-      }
-    }
+    // task 1330: the tablet's own wallpaper screen, however its maker named it
+    int opened = app.forge.look.LiveWall.open(this, new ComponentName(this, ThemeWallpaper.class));
+    String hint = app.forge.look.LiveWall.hint(opened, "Forge particles");
+    if (hint != null) Toast.makeText(this, hint, Toast.LENGTH_LONG).show();
+    if (opened != app.forge.look.LiveWall.NONE) return;
+    // no live wallpaper screen Forge can open: say where the still picture is
+    Toast.makeText(this, "On this tablet the theme goes on as a picture: Forge, Wallpapers, Still",
+        Toast.LENGTH_LONG).show();
   }
 
   private void pickPicture() {

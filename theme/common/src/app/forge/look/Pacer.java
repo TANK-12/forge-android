@@ -1,5 +1,5 @@
 /* The frame-rate cap for whatever Forge draws on the phone, kept low on
-   battery: the chosen rate (30 unless changed; up to 120 for a 90 or 120 Hz
+   battery: the chosen rate (30 unless changed, 60 for the particles wallpaper since task 1330; up to 120 for a 90 or 120 Hz
    screen, Relay task 1320), at most 15 while Battery
    Saver is on or the phone is getting hot, and 0 (one still frame) when the
    battery is under 15% and not charging. The battery is read at most every

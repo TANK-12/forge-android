@@ -7,6 +7,13 @@
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
   <uses-feature android:name="android.software.live_wallpaper" android:required="true" />
   <uses-feature android:name="android.hardware.microphone" android:required="false" />
+  <!-- task 1330: find the tablet's live wallpaper screen whatever its maker called it -->
+  <queries>
+    <intent><action android:name="android.service.wallpaper.CHANGE_LIVE_WALLPAPER" /></intent>
+    <intent><action android:name="android.service.wallpaper.LIVE_WALLPAPER_CHOOSER" /></intent>
+    <intent><action android:name="android.intent.action.SET_WALLPAPER" /></intent>
+    <package android:name="com.android.wallpaper.livepicker" />
+  </queries>
   <queries>
     <package android:name="app.forge.visualiser" />
   </queries>
