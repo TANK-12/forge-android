@@ -24,6 +24,14 @@
             android:singleLine="true" android:ellipsize="end" />
       </LinearLayout>
     </LinearLayout>
+    <!-- bars the home screen moves by itself (task 1322): no app work -->
+    <ProgressBar android:id="@+id/bars" android:layout_width="match_parent"
+        android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="6dp"
+        android:indeterminate="true" android:indeterminateOnly="false"
+        android:progressDrawable="@null" android:indeterminateDrawable="@drawable/viz_bars"
+        android:indeterminateTint="#ff8fb8ff" android:indeterminateTintMode="src_in"
+        android:minWidth="0dp" android:minHeight="18dp" android:maxWidth="4000dp"
+        android:maxHeight="4000dp" android:importantForAccessibility="no" />
     <LinearLayout android:layout_width="match_parent" android:layout_height="40dp"
         android:layout_marginTop="2dp" android:orientation="horizontal" android:gravity="center">
       <ImageButton android:id="@+id/prev" android:layout_width="0dp" android:layout_height="40dp"

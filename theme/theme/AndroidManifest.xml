@@ -39,8 +39,5 @@
       <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_music" />
     </receiver>
-    <!-- the particles widget's frames, for the home screen to read -->
-    <provider android:name=".FramesProvider" android:authorities="app.forge.theme.frames"
-        android:exported="true" />
   </application>
 </manifest>

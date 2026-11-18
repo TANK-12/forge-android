@@ -4,7 +4,9 @@
    screen is hidden the page, the sound and the frames all stop; the frame
    rate follows the battery rules in Pacer (30 by default, 15 on Battery
    Saver, a still picture under 15%). If this tablet will not show a
-   Presentation there, the wallpaper says so in plain words instead. */
+   Presentation there, the wallpaper shows a quiet gradient in the chosen
+   look's colours (no error text: task 1322) and tries again (three times
+   at most, two minutes apart) as the home screen shows. */
 package app.forge.visualiser;
 
 import android.app.Presentation;
@@ -13,12 +15,13 @@ import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.RadialGradient;
+import android.graphics.Shader;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.os.Build;
 import android.service.wallpaper.WallpaperService;
 import android.util.Log;
-import android.util.TypedValue;
 import android.view.SurfaceHolder;
 import android.view.WindowManager;
 import android.webkit.WebView;
@@ -38,6 +41,8 @@ public final class VizWallpaper extends WallpaperService {
     private WebView web;
     private int width, height;
     private boolean shown, failed;
+    private long failedAt;
+    private int retries;
 
     @Override public void onCreate(SurfaceHolder holder) {
       super.onCreate(holder);
@@ -68,6 +73,14 @@ public final class VizWallpaper extends WallpaperService {
 
     @Override public void onVisibilityChanged(boolean visible) {
       shown = visible;
+      if (visible && failed && retries < 3
+          && android.os.SystemClock.elapsedRealtime() - failedAt > 120_000) {
+        // a few more tries, two minutes apart, as the home screen shows; the gradient stays if they fail
+        retries++;
+        failed = false;
+        reopen();
+        return;
+      }
       if (visible) resume();
       else pause();
     }
@@ -101,6 +114,7 @@ public final class VizWallpaper extends WallpaperService {
         Log.w("ForgeViz", "wallpaper could not start the page", e);
         close();
         failed = true;
+        failedAt = android.os.SystemClock.elapsedRealtime();
         still(holder);
       }
     }
@@ -144,25 +158,24 @@ public final class VizWallpaper extends WallpaperService {
       display = null;
     }
 
-    /** One plain picture saying the visualiser cannot run as a wallpaper here. */
+    /** A still gradient in the wallpaper look's colours, for when the page cannot run. */
     private void still(SurfaceHolder holder) {
       Canvas c = null;
       try {
         c = holder.lockCanvas();
         if (c == null) return;
-        c.drawColor(Color.rgb(5, 7, 11));
+        Presets.Preset look = Presets.find(VizWallpaper.this,
+            Prefs.get(VizWallpaper.this, Prefs.WALL));
+        int bg = look == null ? Color.rgb(5, 7, 11) : look.background;
+        int glow = look == null ? Color.rgb(58, 111, 216) : look.secondary;
+        float w = c.getWidth(), h = c.getHeight();
+        c.drawColor(bg);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setColor(Color.rgb(214, 232, 255));
-        p.setTextAlign(Paint.Align.CENTER);
-        p.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 18f,
-            getResources().getDisplayMetrics()));
-        c.drawText("Forge Visualiser cannot run as a wallpaper on this tablet.",
-            c.getWidth() / 2f, c.getHeight() / 2f, p);
-        p.setColor(Color.rgb(138, 180, 255));
-        c.drawText("Open the Forge Visualiser app for full screen.",
-            c.getWidth() / 2f, c.getHeight() / 2f + p.getTextSize() * 1.8f, p);
+        p.setShader(new RadialGradient(w * 0.5f, h * 0.62f, Math.max(w, h) * 0.6f,
+            (glow & 0x00ffffff) | 0x66000000, bg & 0x00ffffff, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
       } catch (RuntimeException e) {
-        Log.w("ForgeViz", "wallpaper could not draw its note", e);
+        Log.w("ForgeViz", "wallpaper could not draw its still picture", e);
       } finally {
         if (c != null) holder.unlockCanvasAndPost(c);
       }

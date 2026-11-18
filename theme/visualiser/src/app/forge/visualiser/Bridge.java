@@ -27,6 +27,9 @@ public final class Bridge {
     void wallpaper(String presetId);
 
     void close();
+
+    /** The frame rate now allowed changed (a pick or the battery rules). */
+    void rate(int fps);
   }
 
   static final int SIZE = Sound.BANDS + Sound.WAVE + 6;
@@ -36,6 +39,7 @@ public final class Bridge {
   private final Actions actions;
   private final boolean wall;
   private volatile boolean stilled;
+  private volatile int told = -1;
   private final byte[] out = new byte[SIZE];
   private final Handler main = new Handler(Looper.getMainLooper());
 
@@ -78,6 +82,10 @@ public final class Bridge {
     } else if (fps > 0 && stilled) {
       stilled = false;
       sound.start(Prefs.source(app), Prefs.micAllowed(app));
+    }
+    if (actions != null && fps != told) {
+      told = fps;
+      main.post(() -> actions.rate(fps));
     }
     return fps;
   }

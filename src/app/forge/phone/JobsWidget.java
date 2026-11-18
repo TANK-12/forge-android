@@ -84,6 +84,22 @@ public class JobsWidget extends AppWidgetProvider {
     e.apply();
   }
 
+  /** A computer's pairing moved to a new address (Main.moveComputer): its token and widget picks follow. */
+  static void moved(Context c, String old, String at, String token) {
+    synchronized (LOCK) {
+      SharedPreferences s = store(c);
+      SharedPreferences.Editor e = s.edit();
+      for (java.util.Map.Entry<String, ?> kv : s.getAll().entrySet()) {
+        if (kv.getKey().startsWith("for:") && old.equals(kv.getValue())) e.putString(kv.getKey(), at);
+      }
+      e.remove("token:" + old).remove("reply:" + old).remove("state:" + old)
+          .remove("msg:" + old).remove("at:" + old).remove("ok:" + old);
+      if (token != null && !token.isEmpty()) e.putString("token:" + at, token);
+      e.commit();
+    }
+    refreshSoon(c, true);
+  }
+
   /** A forgotten computer: its token and what was last heard from it go. */
   static void forget(Context c, String host) {
     synchronized (LOCK) { // not under a refresh that would write its answer back

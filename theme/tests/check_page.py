@@ -7,7 +7,10 @@ must list every preset. A screen without WebGL 2 (nogl) must keep a Light look
 showing, dim every Showpiece tile and say why. The canvas must draw at the
 look's own share of the screen (looks.json scale) times the user's sharpness
 (1 in the player, 0.75 on the wallpaper), as the desktop app does (task 1308);
-the four looks of task 1297 (Tunnel, Skyline, Warp, Northern lights) run too. Screenshots go to OUT (default
+the four looks of task 1297 (Tunnel, Skyline, Warp, Northern lights) run too.
+The full-screen frame-rate chips come from the shared RATES list (30, 60, 90,
+120) and a rate the Android side allows above the screen's shows in the
+player's rate note (task 1320). Screenshots go to OUT (default
 /tmp/1293-page-shots).
 
     python3 phone/theme/tests/check_page.py [OUT]
@@ -40,6 +43,7 @@ CASES = [
     ("player", "aurora", "Northern lights", "player-aurora", "", 0.75),
     ("wallpaper", "aurora", None, "wallpaper-aurora", "", 0.5625),
     ("player", "chrome", "Chrome", "player-chrome", "", 0.7),
+    ("player", "halo", None, "player-120", "&fps=120&sheet=set", None),
 ]
 
 
@@ -82,6 +86,7 @@ def passes(
     pulled (calls) are not judged: Chrome's DOM dump runs only 0-3 animation
     frames in its 2.5 s, so the screenshots are the proof that looks draw."""
     tiles, webgl = want
+    fps = dict(x.split("=", 1) for x in query.split("&") if "=" in x).get("fps")
     if not got or not got["canvas"]:
         return False
     if "nogl" in query:
@@ -100,6 +105,10 @@ def passes(
         and (name is None or got["name"] == name)
         # the canvas rounds to whole pixels
         and (px is None or abs(got.get("px", 0) - px) < 0.01)
+        # the frame-rate chips come from the shared list (task 1320)
+        and (mode != "player" or got.get("rates") == "30,60,90,120")
+        # ?fps=N: the rate the Android side allows shows in the note
+        and (not fps or fps in got.get("rateNote", ""))
     )
 
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="app.forge.phone" android:versionCode="6" android:versionName="0.6">
+    package="app.forge.phone" android:versionCode="7" android:versionName="0.7">
   <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
   <uses-permission android:name="android.permission.INTERNET" />
   <!-- this device's own Wi-Fi address, to find computers on the same network -->
@@ -13,6 +13,8 @@
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
   <!-- updates (task 1316): Forge hands a newer copy of itself to Android's installer -->
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+  <!-- a theme picture as a plain still wallpaper (task 1322) -->
+  <uses-permission android:name="android.permission.SET_WALLPAPER" />
   <uses-feature android:name="android.software.live_wallpaper" android:required="false" />
   <uses-feature android:name="android.hardware.microphone" android:required="false" />
   <application android:label="@string/name" android:icon="@mipmap/icon"
@@ -99,8 +101,5 @@
       <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_music" />
     </receiver>
-    <!-- the particles widget's frames, for the home screen to read -->
-    <provider android:name="app.forge.theme.FramesProvider"
-        android:authorities="app.forge.phone.frames" android:exported="true" />
   </application>
 </manifest>

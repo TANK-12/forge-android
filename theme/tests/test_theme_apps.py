@@ -125,21 +125,57 @@ def test_widget_layouts_use_only_remote_views():
         assert tags <= allowed, (xml.name, tags - allowed)
 
 
-def test_frames_provider_only_serves_frame_names():
-    java = (THEME / "theme/src/app/forge/theme/FramesProvider.java").read_text()
-    found = re.search(r'Pattern\.compile\("([^"]+)"\)', java)
-    assert found
-    pattern = found.group(1).replace("\\\\", "\\")
-    rx = re.compile(pattern)
-    # a name as Widgets makes it: widget, frame, time, 64 random bits in hex
-    assert rx.fullmatch("p12-3-99887766-1f2e3d4c5b6a7980.png")
-    bad = ("../shared_prefs/look.xml", "look.xml", "p1-2-3.png/../x", "p1.png")
-    # the old names, with no random part, could be guessed by other apps
-    for name in bad + ("p12-3-99887766.png",):
-        assert not rx.fullmatch(name)
-    widgets = (THEME / "theme/src/app/forge/theme/Widgets.java").read_text()
-    assert "Long.toHexString(RANDOM.nextLong())" in widgets
-    assert "new SecureRandom()" in widgets
+def _widget_res():
+    spec = importlib.util.spec_from_file_location(
+        "make_widget_res", THEME / "make_widget_res.py"
+    )
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["make_widget_res"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_widget_pictures_cover_every_kind_and_shape(assets, tmp_path):
+    """Task 1322: the particles widget is a picture plus animated vector layers
+    the home screen runs itself (no flip-book frames from the app)."""
+    out, _ = assets
+    gen = _widget_res()
+    kinds = [k["key"] for k in json.loads((out / "particles.json").read_text())]
+    made = gen.build(out / "particles.json", tmp_path)
+    assert made == len(kinds) * len(gen.SHAPES) * 2
+    allowed = {"FrameLayout", "ImageView", "ProgressBar"}
+    for kind in kinds:
+        for shape in gen.SHAPES:
+            for layer in "ab":
+                xml = tmp_path / "drawable" / f"wp_{kind}_{shape}_{layer}.xml"
+                assert "<animated-vector" in xml.read_text(), xml.name
+            lay = (tmp_path / "layout" / f"widget_p_{kind}_{shape}.xml").read_text()
+            assert set(re.findall(r"<([A-Z]\w+)", lay)) <= allowed, (kind, shape)
+            for view in ("root", "wp_bg", "wp_a", "wp_b"):
+                assert f'android:id="@id/{view}"' in lay, (kind, shape, view)
+    # Widgets.java falls back to the soft kind; the provider's first layout is one
+    assert "soft" in kinds
+    info = (THEME / "theme/res/xml/widget_particles.xml").read_text()
+    assert "@layout/widget_p_soft_w" in info
+    ids = (THEME / "theme/res/values/ids.xml").read_text()
+    for view in ("root", "wp_bg", "wp_a", "wp_b"):
+        assert f'name="{view}"' in ids
+
+
+def test_visualiser_bars_are_generated():
+    gen = _widget_res()
+    bars = THEME / "visualiser/res/drawable/viz_bars.xml"
+    assert bars.read_text(encoding="utf-8") == gen.bars()
+
+
+def test_old_flip_book_is_gone():
+    assert not (THEME / "theme/src/app/forge/theme/FramesProvider.java").exists()
+    for manifest in (
+        THEME / "theme/AndroidManifest.xml",
+        FORGE / "phone/android/AndroidManifest.xml",
+    ):
+        assert "FramesProvider" not in manifest.read_text()
 
 
 def test_sound_stop_forgets_its_mode():

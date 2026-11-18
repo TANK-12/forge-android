@@ -30,6 +30,8 @@ cp -r "$HERE/assets/start" "$STAGE/assets/start"
 # the visualiser's looks, the theme pictures and particle kinds (from Forge's
 # registries), and the visualiser's own page (host/)
 "$HERE/../.venv/bin/python" "$THEME/make_assets.py" "$STAGE/assets"
+# the particles widget's moving pictures, one per particle kind (task 1322)
+"$HERE/../.venv/bin/python" "$THEME/make_widget_res.py" "$STAGE/assets/particles.json" "$STAGE/wres"
 cp -r "$THEME/visualiser/assets/." "$STAGE/assets/"
 # device strength rules and code (shared/perf/device.json, Relay task 596)
 cp "$HERE/../../shared/forge_device.js" "$STAGE/assets/start/device.js"
@@ -69,8 +71,9 @@ for part in common/res theme/res visualiser/res; do
   "$BT/aapt2" compile --dir "$THEME/$part" -o "$STAGE/${part%%/*}.zip"
 done
 "$BT/aapt2" compile --dir "$HERE/res" -o "$STAGE/res.zip"
+"$BT/aapt2" compile --dir "$STAGE/wres" -o "$STAGE/wres.zip"
 "$BT/aapt2" link -o "$STAGE/base.apk" -I "$JAR" --manifest "$HERE/AndroidManifest.xml" \
-  -A "$STAGE/assets" "$STAGE/common.zip" "$STAGE/theme.zip" "$STAGE/visualiser.zip" "$STAGE/res.zip" \
+  -A "$STAGE/assets" "$STAGE/common.zip" "$STAGE/theme.zip" "$STAGE/visualiser.zip" "$STAGE/wres.zip" "$STAGE/res.zip" \
   --java "$STAGE/gen" --extra-packages app.forge.theme:app.forge.visualiser \
   --auto-add-overlay -0 png -0 jpg
 mkdir -p "$STAGE/classes"

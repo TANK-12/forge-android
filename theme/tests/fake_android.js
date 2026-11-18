@@ -26,10 +26,11 @@
       let s = ""; for (const x of b) s += String.fromCharCode(x);
       return btoa(s);
     },
-    fps() { return 30; }, why() { return ""; }, status() { return "Listening to this device's own sound (test)"; },
+    // ?fps=120: the rate the Android side allows (its Pacer), else 30
+    fps() { return Number(q.get("fps")) || 30; }, why() { return ""; }, status() { return "Listening to this device's own sound (test)"; },
     prefs() { return JSON.stringify(prefs); }, set(k, v) { prefs[k] = v; }, key() {}, source(m) { prefs.source = m; }, wallpaper() {}, close() {},
   };
-  window.__check = () => ({ errs, calls, canvas: !!document.querySelector("canvas"), name: (document.getElementById("name") || {}).textContent, tiles: document.querySelectorAll(".tile").length, off: document.querySelectorAll(".tile.off").length, note: (document.getElementById("note") || {}).textContent || "", px: (() => { const c = document.querySelector("canvas"); return c && c.clientWidth ? +(c.width / (c.clientWidth * (window.devicePixelRatio || 1))).toFixed(3) : 0; })() });
+  window.__check = () => ({ errs, calls, canvas: !!document.querySelector("canvas"), name: (document.getElementById("name") || {}).textContent, tiles: document.querySelectorAll(".tile").length, off: document.querySelectorAll(".tile.off").length, note: (document.getElementById("note") || {}).textContent || "", rates: Array.from(document.querySelectorAll("#fpsChips button"), (b) => b.dataset.v).join(","), rateNote: (document.getElementById("rateNote") || {}).textContent || "", px: (() => { const c = document.querySelector("canvas"); return c && c.clientWidth ? +(c.width / (c.clientWidth * (window.devicePixelRatio || 1))).toFixed(3) : 0; })() });
   addEventListener("load", () => {
     const open = q.get("sheet");
     if (open) setTimeout(() => document.getElementById(open + "Btn").click(), 800);

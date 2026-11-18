@@ -46,6 +46,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -56,6 +57,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import javax.net.ssl.HttpsURLConnection;
@@ -192,6 +194,7 @@ public class Main extends Activity {
       }
     }
     resumeUpdate();
+    wallBack();
     answer("{\"resumed\":true}"); // the home page reads the theme and updates again
     // the widget signs in with each computer's token, copied from the WebView's
     // cookie store (where the pairing put it) into this app's own store
@@ -246,6 +249,116 @@ public class Main extends Activity {
     } catch (IOException | JSONException e) {
       return json("{}");
     }
+  }
+
+  // -- wallpapers and widgets from the start page (task 1322) ---------------------
+
+  static final String THEME_WALL = "app.forge.theme.ThemeWallpaper";
+  static final String VIZ_WALL = "app.forge.visualiser.VizWallpaper";
+
+  /** What the wallpaper is now and what each Forge wallpaper shows, for the
+      start page's Wallpapers section. */
+  WebResourceResponse wallsJson() {
+    String now = "still";
+    try {
+      android.app.WallpaperInfo info = android.app.WallpaperManager.getInstance(this).getWallpaperInfo();
+      if (info != null) {
+        boolean mine = getPackageName().equals(info.getPackageName());
+        now = mine && THEME_WALL.equals(info.getServiceName()) ? "theme"
+            : mine && VIZ_WALL.equals(info.getServiceName()) ? "visualiser" : "other";
+      }
+    } catch (RuntimeException e) {
+      now = "unknown";
+    }
+    android.appwidget.AppWidgetManager widgets = getSystemService(android.appwidget.AppWidgetManager.class);
+    try {
+      JSONObject o = new JSONObject()
+          .put("now", now)
+          .put("theme", app.forge.theme.Walls.theme(this))
+          .put("look", app.forge.visualiser.WallPick.look(this))
+          .put("pin", widgets != null && widgets.isRequestPinAppWidgetSupported());
+      return json(o.toString());
+    } catch (JSONException e) {
+      return json("{}");
+    }
+  }
+
+  /** Use a Forge live wallpaper: a theme with particles, or a visualiser look.
+      When that wallpaper is already the one in use, it changes at once with no
+      system screen; otherwise Android's own screen asks to confirm (apps cannot
+      set a live wallpaper by themselves), once. */
+  /** The live wallpaper pick waiting on Android's confirm: kind and the pick before it. */
+  String[] wallAsked;
+
+  void wallLive(String kind, String id) {
+    boolean viz = "visualiser".equals(kind);
+    String before = viz ? app.forge.visualiser.WallPick.look(this) : app.forge.theme.Walls.theme(this);
+    boolean known = viz ? app.forge.visualiser.WallPick.use(this, id) : app.forge.theme.Walls.use(this, id);
+    if (!known) return;
+    boolean active = viz ? app.forge.visualiser.WallPick.active(this) : app.forge.theme.Walls.active(this);
+    if (active) {
+      Toast.makeText(this, "Wallpaper changed", Toast.LENGTH_SHORT).show();
+      return;
+    }
+    Intent i = new Intent(android.app.WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
+        .putExtra(android.app.WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+            new android.content.ComponentName(this, viz ? VIZ_WALL : THEME_WALL));
+    wallAsked = new String[] {viz ? "visualiser" : "theme", before};
+    try {
+      startActivity(i);
+    } catch (ActivityNotFoundException | SecurityException e) {
+      try {
+        startActivity(new Intent(android.app.WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER));
+        Toast.makeText(this, "Pick " + (viz ? "Forge visualiser" : "Forge particles") + " in the list",
+            Toast.LENGTH_LONG).show();
+      } catch (ActivityNotFoundException | SecurityException e2) {
+        wallBack();
+        Toast.makeText(this, "This tablet has no live wallpaper screen: use Still picture instead",
+            Toast.LENGTH_LONG).show();
+      }
+    }
+  }
+
+  /** A theme's picture as a plain wallpaper on the home screen, the lock screen or both. */
+  void wallStill(String id, String where) {
+    int which = "lock".equals(where) ? android.app.WallpaperManager.FLAG_LOCK
+        : "home".equals(where) ? android.app.WallpaperManager.FLAG_SYSTEM
+        : android.app.WallpaperManager.FLAG_SYSTEM | android.app.WallpaperManager.FLAG_LOCK;
+    String done = "lock".equals(where) ? "Set on the lock screen"
+        : "home".equals(where) ? "Set on the home screen" : "Set on the home and lock screens";
+    Toast.makeText(this, "Setting the picture...", Toast.LENGTH_SHORT).show();
+    new Thread(() -> {
+      String err = app.forge.theme.Walls.still(this, id, which);
+      runOnUiThread(() -> Toast.makeText(this, err == null ? done : err, Toast.LENGTH_LONG).show());
+    }, "forge-still-wallpaper").start();
+  }
+
+  /** Put a Forge widget on the home screen: Android shows its own Add box. */
+  void widgetAdd(String kind) {
+    String cls = kind == null ? null : WIDGETS.get(kind);
+    if (cls == null) return;
+    android.appwidget.AppWidgetManager m = getSystemService(android.appwidget.AppWidgetManager.class);
+    boolean asked = false;
+    try {
+      asked = m != null && m.isRequestPinAppWidgetSupported()
+          && m.requestPinAppWidget(new android.content.ComponentName(this, cls), null, null);
+    } catch (RuntimeException e) {
+      asked = false;
+    }
+    if (!asked) {
+      Toast.makeText(this, "Long-press the home screen, then Widgets, then Forge", Toast.LENGTH_LONG).show();
+    }
+  }
+
+  /** The start page's widget names and their classes. */
+  static final Map<String, String> WIDGETS = new HashMap<>();
+
+  static {
+    WIDGETS.put("clock", "app.forge.theme.Widgets$ClockWidget");
+    WIDGETS.put("particles", "app.forge.theme.Widgets$ParticlesWidget");
+    WIDGETS.put("music", "app.forge.theme.Widgets$MusicWidget");
+    WIDGETS.put("visualiser", "app.forge.visualiser.VizWidget");
+    WIDGETS.put("jobs", "app.forge.phone.JobsWidget");
   }
 
   // -- updates over the air (task 1316) -------------------------------------------
@@ -783,15 +896,24 @@ public class Main extends Activity {
 
   /** One paired computer's view for the start page: its apps, name and what it lets this device do. */
   WebResourceResponse hubJson(String host) {
+    // only the start page's own cards may start a look for a moved computer
+    return json(hubBody(host, null, startShown));
+  }
+
+  /** Whether the start page is the page shown (set as each page starts loading). */
+  volatile boolean startShown;
+
+  /** hubJson's answer; `look`: when the computer does not answer, look for it at a new address. */
+  String hubBody(String host, String known, boolean look) {
     JSONObject c = computer(host);
-    if (c == null) return json("{\"paired\":false}");
-    String pin = c.optString("pin"), token = token(host);
+    if (c == null) return "{\"paired\":false}";
+    String pin = c.optString("pin"), token = known != null ? known : token(host);
     String head = "{\"paired\":true,\"host\":" + Link.quote(host);
-    if (token.isEmpty()) return json(head + ",\"signed_out\":true}");
+    if (token.isEmpty()) return head + ",\"signed_out\":true}";
     try {
       Link.Reply r = Link.get(host, pin, "/hub/api/apps", token);
-      if (r.status == 401) return json(head + ",\"signed_out\":true}");
-      if (r.status != 200) return json(head + ",\"error\":" + Link.quote(Link.said(r)) + "}");
+      if (r.status == 401) return head + ",\"signed_out\":true}";
+      if (r.status != 200) return head + ",\"error\":" + Link.quote(Link.said(r)) + "}";
       try { // the computer's own name and what its owner lets this device do, kept for offline use
         JSONObject hub = new JSONObject(r.body);
         JSONObject entry = computer(host);
@@ -803,21 +925,94 @@ public class Main extends Activity {
       } catch (JSONException e) {
         // an older Forge: no name, nothing extra allowed
       }
-      return json(head + ",\"hub\":" + r.body + "}");
+      return head + ",\"hub\":" + r.body + "}";
     } catch (Link.Failure f) {
-      return json(head + ",\"error\":" + Link.quote(f.getMessage()) + "}");
+      String at = look ? movedTo(host, token) : null;
+      if (at != null) return "{\"moved_from\":" + Link.quote(host) + "," + hubBody(at, token, false).substring(1);
+      return head + ",\"error\":" + Link.quote(f.getMessage()) + "}";
+    }
+  }
+
+  /** When each address was last looked for or moved to (once a minute at most). */
+  private static final Map<String, Long> lookedFor = new HashMap<>();
+
+  /**
+   * A paired computer that no longer answers at its Wi-Fi address may have
+   * been given another one by the router: look on this Wi-Fi for the same
+   * certificate and move the pairing there (task 1322), so it reconnects with
+   * no new pairing. Only for plain home-network IPv4 addresses (not a
+   * Tailscale one: that computer is away, not moved). The new address, or null.
+   */
+  String movedTo(String host, String token) {
+    JSONObject c = computer(host);
+    byte[] b = Link.bytesOf(host);
+    if (c == null || b == null || b.length != 4 || Link.homeAddress(host) == null) return null;
+    if ((b[0] & 0xff) == 100 || (b[0] & 0xff) == 127) return null; // Tailscale, or loopback (tests)
+    synchronized (lookedFor) {
+      Long last = lookedFor.get(host);
+      long now = android.os.SystemClock.elapsedRealtime();
+      if (last != null && now - last < 60_000) return null;
+      lookedFor.put(host, now);
+    }
+    OnWifi w = onWifi();
+    if (w == null) return null;
+    List<String> there = new ArrayList<>();
+    for (String at : Link.scan(w.own, 400, w.net.getSocketFactory())) {
+      if (!at.equals(host) && computer(at) == null) there.add(at);
+    }
+    String at = Link.findPinned(there, c.optString("pin"));
+    if (at == null) return null;
+    synchronized (lookedFor) { // no look straight back from the new address
+      lookedFor.put(at, android.os.SystemClock.elapsedRealtime());
+    }
+    moveComputer(host, at, token);
+    return at;
+  }
+
+  /** The pairing with `old` now lives at `at`: its entry (in its place), token and widgets. */
+  void moveComputer(String old, String at, String token) {
+    synchronized (this) {
+      JSONArray list = computers(), out = new JSONArray();
+      for (int i = 0; i < list.length(); i++) {
+        JSONObject c = list.optJSONObject(i);
+        if (c == null) continue;
+        if (old.equals(c.optString("host"))) {
+          try {
+            c.put("host", at);
+          } catch (JSONException e) {
+            return;
+          }
+        }
+        out.put(c);
+      }
+      saveComputers(out);
+    }
+    if (old.equals(laptop())) prefs.edit().putString("host", at).apply();
+    CookieManager cm = CookieManager.getInstance();
+    if (!token.isEmpty()) {
+      cm.setCookie(Link.origin(at), Link.COOKIE + "=" + token
+          + "; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=15552000");
+    }
+    dropToken(old);
+    JobsWidget.moved(this, old, at, token);
+  }
+
+  /** This device's IPv4 address on the Wi-Fi (or a cable) and that network. */
+  static final class OnWifi {
+    final byte[] own;
+    final Network net;
+
+    OnWifi(byte[] own, Network net) {
+      this.own = own;
+      this.net = net;
     }
   }
 
   /**
-   * Addresses on this Wi-Fi that answer on the phone link's port (Link.scan).
    * The Wi-Fi (or a cable), not whatever network is active: with Tailscale or
    * another VPN on, or on mobile data, the active one is not the home network.
-   * The probes go out on that network too.
    */
-  WebResourceResponse scanJson() {
-    byte[] own = null;
-    Network home = null;
+  OnWifi onWifi() {
     try {
       ConnectivityManager cm = getSystemService(ConnectivityManager.class);
       for (Network n : cm.getAllNetworks()) {
@@ -827,19 +1022,21 @@ public class Main extends Activity {
         if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
             && !caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) continue;
         for (LinkAddress la : lp.getLinkAddresses()) {
-          if (la.getAddress() instanceof Inet4Address) {
-            own = la.getAddress().getAddress();
-            home = n;
-          }
+          if (la.getAddress() instanceof Inet4Address) return new OnWifi(la.getAddress().getAddress(), n);
         }
-        if (own != null) break;
       }
     } catch (RuntimeException e) {
-      own = null;
+      return null;
     }
-    if (own == null || home == null) return json("{\"found\":[],\"error\":\"This device is not on a Wi-Fi network.\"}");
+    return null;
+  }
+
+  /** Addresses on this Wi-Fi that answer on the phone link's port (Link.scan); the probes go out on that network. */
+  WebResourceResponse scanJson() {
+    OnWifi w = onWifi();
+    if (w == null) return json("{\"found\":[],\"error\":\"This device is not on a Wi-Fi network.\"}");
     JSONArray found = new JSONArray();
-    for (String at : Link.scan(own, 400, home.getSocketFactory())) {
+    for (String at : Link.scan(w.own, 400, w.net.getSocketFactory())) {
       JSONObject c = computer(at);
       try {
         found.put(new JSONObject().put("host", at).put("paired", c != null).put("name", c == null ? "" : c.optString("name")));
@@ -847,7 +1044,7 @@ public class Main extends Activity {
         // skipped
       }
     }
-    return json("{\"found\":" + found + ",\"own\":" + Link.quote(Link.written(own)) + "}");
+    return json("{\"found\":" + found + ",\"own\":" + Link.quote(Link.written(w.own)) + "}");
   }
 
   /** The certificate's DER bytes (Android 10 has getX509Certificate, older ones the saved state). */
@@ -966,12 +1163,16 @@ public class Main extends Activity {
     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
       Uri uri = request.getUrl();
       String path = uri.getPath() == null ? "" : uri.getPath();
-      if (START.equals(uri.getHost()) && path.matches("/(visualiser|theme|update-check|update-install)")) {
-        // the visualiser, wallpaper and widgets, and updates: from the start page only
+      if (START.equals(uri.getHost())
+          && path.matches("/(visualiser|theme|update-check|update-install|wall-live|wall-still|widget-add)")) {
+        // the visualiser, wallpapers and widgets, and updates: from the start page only
         if (onStart(view) && request.isForMainFrame()) {
           if (path.equals("/visualiser")) openVisualiser();
           else if (path.equals("/theme")) openTheme();
           else if (path.equals("/update-check")) checkUpdates();
+          else if (path.equals("/wall-live")) wallLive(uri.getQueryParameter("kind"), uri.getQueryParameter("id"));
+          else if (path.equals("/wall-still")) wallStill(uri.getQueryParameter("id"), uri.getQueryParameter("where"));
+          else if (path.equals("/widget-add")) widgetAdd(uri.getQueryParameter("kind"));
           else installUpdate();
         }
         return true;
@@ -1025,7 +1226,13 @@ public class Main extends Activity {
     }
 
     @Override
+    public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+      startShown = url != null && START.equals(Uri.parse(url).getHost());
+    }
+
+    @Override
     public void doUpdateVisitedHistory(WebView view, String url, boolean reload) {
+      startShown = url != null && START.equals(Uri.parse(url).getHost());
       showBar(url);
     }
 
@@ -1070,25 +1277,54 @@ public class Main extends Activity {
       if (app.equals("start") && path.equals("/scan.json")) return scanJson();
       if (app.equals("start") && path.equals("/update.json")) return updateJson();
       if (app.equals("start") && path.equals("/look.json")) return lookJson();
+      if (app.equals("start") && path.equals("/walls.json")) return wallsJson();
       if (path.startsWith("/api/")) return reply(503, "application/json", "{\"error\":\"offline\"}");
       if (path.endsWith("/")) path += "index.html";
       String base = app.equals("start") ? "start" : "offline/" + app + "/www";
       // the theme pictures (Forge Theme's walls) behind the home page's top, and the
-      // visualiser's list of looks for its tile
+      // visualiser's list of looks for its tile; themes and looks for Wallpapers
       if (app.equals("start") && (path.matches("/walls/[a-z0-9._-]+\\.(jpg|png|webp)")
-          || path.equals("/visualiser/looks.json"))) base = "";
+          || path.equals("/visualiser/looks.json") || path.equals("/visualiser/presets.json")
+          || path.equals("/themes.json"))) base = "";
       try {
         InputStream in = getAssets().open(base.isEmpty() ? path.substring(1) : base + path);
         WebResourceResponse r = new WebResourceResponse(type(path), "utf-8", in);
         Map<String, String> h = new HashMap<>();
         h.put("Content-Security-Policy", "connect-src 'self'; object-src 'none'");
         h.put("Cache-Control", "no-cache");
+        // an offline app's own headers from phone_apps.json (build_offline.py writes
+        // them to www/forge-offline-headers.json): the AI app's model download
+        // (connect-src) and its threads (COOP/COEP), task 1325
+        if (!app.equals("start")) h.putAll(appHeaders(app));
         r.setResponseHeaders(h);
         return r;
       } catch (IOException e) {
         return reply(404, "text/plain", "Nothing here");
       }
     }
+  }
+
+  final Map<String, Map<String, String>> headerCache = new HashMap<>();
+
+  /** The extra response headers an offline app asks for (none when it has no file). */
+  synchronized Map<String, String> appHeaders(String app) {
+    Map<String, String> got = headerCache.get(app);
+    if (got != null) return got;
+    got = new HashMap<>();
+    try (InputStream in = getAssets().open("offline/" + app + "/www/forge-offline-headers.json")) {
+      ByteArrayOutputStream buf = new ByteArrayOutputStream();
+      byte[] chunk = new byte[4096];
+      for (int n; (n = in.read(chunk)) > 0; ) buf.write(chunk, 0, n);
+      JSONObject o = new JSONObject(buf.toString("UTF-8"));
+      for (Iterator<String> k = o.keys(); k.hasNext(); ) {
+        String name = k.next();
+        got.put(name, o.getString(name));
+      }
+    } catch (IOException | JSONException e) {
+      // no file: the default headers only
+    }
+    headerCache.put(app, got);
+    return got;
   }
 
   static WebResourceResponse reply(int code, String type, String body) {
@@ -1104,6 +1340,7 @@ public class Main extends Activity {
     if (p.endsWith(".js") || p.endsWith(".mjs")) return "text/javascript";
     if (p.endsWith(".css")) return "text/css";
     if (p.endsWith(".json")) return "application/json";
+    if (p.endsWith(".wasm")) return "application/wasm";
     if (p.endsWith(".svg")) return "image/svg+xml";
     if (p.endsWith(".png")) return "image/png";
     if (p.endsWith(".jpg") || p.endsWith(".jpeg")) return "image/jpeg";
@@ -1187,6 +1424,24 @@ public class Main extends Activity {
       }
       return true;
     }
+  }
+
+  /**
+   * Back from Android's live wallpaper screen (onResume; not a result, since
+   * that screen may run in its own task and answer "cancelled" at once): if
+   * the Forge wallpaper was not set after all, the pick goes back to what it
+   * was, so the theme and the widgets that follow it do not change by
+   * themselves.
+   */
+  void wallBack() {
+    String[] asked = wallAsked;
+    wallAsked = null;
+    if (asked == null) return;
+    boolean viz = "visualiser".equals(asked[0]);
+    boolean active = viz ? app.forge.visualiser.WallPick.active(this) : app.forge.theme.Walls.active(this);
+    if (active || asked[1] == null || asked[1].isEmpty()) return;
+    if (viz) app.forge.visualiser.WallPick.use(this, asked[1]);
+    else app.forge.theme.Walls.use(this, asked[1]);
   }
 
   @Override

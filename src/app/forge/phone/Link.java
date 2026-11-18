@@ -545,6 +545,31 @@ public final class Link {
     return out;
   }
 
+  /**
+   * The first of these addresses where the computer with this certificate
+   * answers, or null (task 1322: a paired computer the router gave a new
+   * address is found again by its certificate). A full TLS handshake through
+   * the pinned factory, so the address must hold the certificate's private key,
+   * not just show a copy of it; nothing is sent after the handshake.
+   */
+  public static String findPinned(List<String> candidates, String fingerprint) {
+    if (fingerprint == null || fingerprint.isEmpty()) return null;
+    SSLSocketFactory pin = pinned(fingerprint.toLowerCase(Locale.ROOT));
+    for (String at : candidates) {
+      byte[] b = bytesOf(at);
+      if (b == null) continue;
+      try (SSLSocket socket = (SSLSocket) pin.createSocket()) {
+        socket.connect(new InetSocketAddress(InetAddress.getByAddress(b), HUB_PORT), TIMEOUT);
+        socket.setSoTimeout(TIMEOUT);
+        socket.startHandshake();
+        return at;
+      } catch (IOException | RuntimeException e) {
+        // nothing there, or not this computer
+      }
+    }
+    return null;
+  }
+
   /** GET a hub path as the paired phone. */
   public static Reply get(String host, String fingerprint, String path, String token) throws Failure {
     return request("GET", host, fingerprint, path, COOKIE + "=" + token, null, null);
@@ -637,6 +662,10 @@ public final class Link {
             System.out.println("failure: " + e.getMessage());
             System.exit(2);
           }
+          break;
+        case "find":
+          String at = findPinned(java.util.Arrays.asList(args).subList(2, args.length), args[1]);
+          System.out.println(at == null ? "none" : at);
           break;
         case "address":
           String a = homeAddress(args[1]);

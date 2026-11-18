@@ -46,7 +46,8 @@
       o.t = t; o.dt = dt;
       if (raw.length < SIZE) {
         for (let b = 0; b < NB; b++) o.bands[b] *= fall;
-        for (let i = 0; i < WAVE; i++) o.wave[i] *= 0.9;
+        const ebb = Math.pow(0.9, dt * 60); // by time: the same fade at 30 or 120 frames a second
+        for (let i = 0; i < WAVE; i++) o.wave[i] *= ebb;
         o.level *= fall; o.bass *= fall; o.mid *= fall; o.treble *= fall;
         o.beat = 0; o.silent = true;
         return o;
@@ -85,6 +86,14 @@
   })();
   const runs = (p) => GL2 || engines[p.look] !== "webgl";
   let pacing = 0, fadeAt = 0, choosing = 0;
+  // the screen's refresh rate (0 until known), measured while nothing draws,
+  // as the player starts and each time it comes back on screen
+  let screenHz = 0, measuring = null;
+  const measure = () => {
+    if (wall) return Promise.resolve();
+    if (!measuring) measuring = ForgeViz.refreshRate(24, 1500).then((hz) => { if (hz) screenHz = hz; measuring = null; });
+    return measuring;
+  };
 
   const readPrefs = () => {
     try { return JSON.parse(A ? A.prefs() : "{}") || {}; } catch (e) { return {}; }
@@ -161,13 +170,35 @@
   // the frame rate allowed now (battery rules on the Android side); 0 = a still picture
   function pace() {
     const fps = A ? A.fps() : 30;
-    player.maxFps = fps || 30;
+    if ((fps || 30) !== player.maxFps) player.setFps(fps || 30);
     const nowStill = fps === 0;
     if (nowStill !== still) {
       still = nowStill;
       if (still) { player.stop(); drawStill(); } else if (!paused) player.start();
     }
-    if (!wall) { $("why").textContent = A ? A.why() : ""; status(); }
+    if (!wall) { $("why").textContent = A ? A.why() : ""; status(); rateNote(); }
+  }
+
+  // what the frame rate is really doing, and plainly when the screen is slower
+  // than the rate picked (the battery rules have their own line, #why)
+  function rateNote() {
+    const el = $("rateNote");
+    if (!el) return;
+    el.textContent = player.running ? ForgeViz.rateNote(player.maxFps, Math.max(screenHz, player.tickHz()), player.drawnFps()) : "";
+  }
+
+  // the full-screen frame-rate chips, from the shared list (shared/visualiser
+  // RATES; "as fast as the screen" is left out to spare the battery)
+  function rateChips() {
+    const box = $("fpsChips");
+    if (!box) return;
+    box.textContent = "";
+    for (const r of ForgeViz.RATES.filter((x) => x.fps > 0)) {
+      const b = document.createElement("button");
+      b.dataset.v = String(r.fps);
+      b.textContent = box.childElementCount ? String(r.fps) : `${r.fps} frames a second`;
+      box.appendChild(b);
+    }
   }
 
   function pause() {
@@ -180,7 +211,11 @@
   function resume() {
     paused = false;
     pace();
-    if (still) drawStill(); else player.start();
+    if (still) drawStill();
+    // the screen is measured once, before the first frame; after that a
+    // return draws at once (a phone keeps its screen)
+    else if (screenHz || wall) player.start();
+    else measure().then(() => { if (!paused && !still) { player.start(); rateNote(); } });
     if (!pacing) pacing = setInterval(pace, 3000);
   }
 
@@ -250,6 +285,7 @@
 
   function sheet(id) {
     for (const s of ["looks", "settings"]) $(s).hidden = s !== id || !$(s).hidden;
+    if (id === "settings") rateNote();
   }
 
   function wake() {
@@ -260,6 +296,7 @@
   function buildUi() {
     $("ui").hidden = false;
     buildLooks();
+    rateChips();
     syncChips();
     $("looksBtn").addEventListener("click", () => sheet("looks"));
     $("setBtn").addEventListener("click", () => sheet("settings"));

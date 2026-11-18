@@ -50,6 +50,30 @@ about; what is next.
 - Not verified then: on a real phone or the emulator; it reached the APK in
   version 0.2 (task 1315, below).
 
+## 90 and 120 frames a second (Relay task 1320, 2026-11-18)
+
+- The full-screen chips come from the shared list (`ForgeViz.RATES` in
+  `shared/visualiser/viz_core.js`): 30, 60, 90, 120 (the desktop's "as fast
+  as the screen" left out for the battery). `Pacer.setWanted` caps at 120
+  (was 60). A line under the chips (`#rateNote`) says plainly when the screen
+  is slower than the pick; the page measures the screen as the player starts
+  (`ForgeViz.refreshRate`). The battery rules still win (15 on Battery
+  Saver or hot, a still picture under 15%).
+- `Bridge.fps()` tells `PlayerActivity.rate(fps)` when the allowed rate
+  changes; above 60 it asks Android for the screen mode at the present size
+  with the lowest refresh rate that reaches it (`preferredDisplayModeId`;
+  90 for 90 when the phone has it, else 120); 60 or less leaves it to the
+  system. The wallpaper keeps its own setting (30 by default).
+- PhoneSound's wave fade and the shared looks' trails now go by time, so a
+  look moves at the same speed at 30 or 120.
+- Verified: `check_page.py` 11/11 headless (new case: chips 30,60,90,120 and
+  an allowed 120 named in the note; shots in
+  `outputs/checks/2026-11-18-1320-visualiser/phone/`); the Java compiled
+  in a scratch javac (aapt2 R + javac, exit 0). Not verified: a real 90 or
+  120 Hz phone (none here), whether a phone's WebView follows the mode
+  asked for, and an APK build with these files (task 1322's 0.6.x OTA
+  carries it).
+
 ## Forge Visualiser 0.2 APK (Relay task 1315, 2026-11-18)
 
 - `visualiser/AndroidManifest.xml` version 2 (0.2), so it installs over the

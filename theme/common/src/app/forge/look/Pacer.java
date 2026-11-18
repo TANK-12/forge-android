@@ -1,5 +1,6 @@
 /* The frame-rate cap for whatever Forge draws on the phone, kept low on
-   battery: the chosen rate (30 unless changed), at most 15 while Battery
+   battery: the chosen rate (30 unless changed; up to 120 for a 90 or 120 Hz
+   screen, Relay task 1320), at most 15 while Battery
    Saver is on or the phone is getting hot, and 0 (one still frame) when the
    battery is under 15% and not charging. The battery is read at most every
    5 seconds, from the system's last battery report (no listener kept). */
@@ -27,7 +28,7 @@ public final class Pacer {
   }
 
   public void setWanted(int fps) {
-    wanted = Math.max(5, Math.min(60, fps));
+    wanted = Math.max(5, Math.min(120, fps));
     checkedMs = 0;
   }
 

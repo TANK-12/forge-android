@@ -2,7 +2,9 @@
    wallpaper when the visualiser is the wallpaper, else in the player), a
    next-look button, music keys and the full-screen player. Home screens
    cannot run a live picture in a widget, so the moving visualiser lives in
-   the wallpaper and the player; this widget only redraws when tapped. */
+   the wallpaper and the player; the widget's bars are an animated drawable
+   the home screen plays by itself (task 1322), in the look's colours, and
+   the widget only redraws when tapped. */
 package app.forge.visualiser;
 
 import android.app.PendingIntent;
@@ -13,6 +15,8 @@ import android.appwidget.AppWidgetProvider;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.ColorStateList;
+import android.os.Build;
 import android.view.KeyEvent;
 import android.widget.RemoteViews;
 import app.forge.look.MediaKeys;
@@ -68,6 +72,12 @@ public final class VizWidget extends AppWidgetProvider {
       RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_visualiser);
       v.setTextViewText(R.id.name, p == null ? c.getString(R.string.viz_name) : p.name);
       v.setTextViewText(R.id.info, p == null ? "No looks in this build" : p.label() + " · " + where);
+      if (p != null) {
+        v.setInt(R.id.bg, "setColorFilter", 0xe6000000 | (p.background & 0xffffff));
+        if (Build.VERSION.SDK_INT >= 31) {
+          v.setColorStateList(R.id.bars, "setIndeterminateTintList", ColorStateList.valueOf(p.primary));
+        }
+      }
       v.setOnClickPendingIntent(R.id.open, open);
       v.setOnClickPendingIntent(R.id.full, open);
       int[][] keys = {

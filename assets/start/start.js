@@ -5,7 +5,8 @@
 // owner's Tailscale way, the apps bundled in the APK, and this Forge's
 // version and updates. Main.java answers /computers.json, /hub.json?host=,
 // /scan.json, /look.json, /update.json, /pair, /open, /forget, /send,
-// /visualiser, /theme, /update-check and /update-install inside the app;
+// /visualiser, /theme, /update-check, /update-install, /wall-live, /wall-still and
+// /widget-add inside the app;
 // nothing here reaches the network by itself.
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -77,6 +78,12 @@ function card(c) {
 
 function fill(box, c, state, parts) {
   const { dot, status, row, grid, head } = parts;
+  if (state.moved_from && state.host) {
+    // the router gave the computer a new address; Forge found it by its certificate
+    c.host = state.host;
+    box.dataset.host = c.host;
+    head.querySelector("small").textContent = c.name ? c.host : "";
+  }
   const hub = state.hub || {};
   const name = hub.computer || c.name;
   if (name) {
@@ -107,6 +114,7 @@ function fill(box, c, state, parts) {
   status.textContent = apps.length
     ? `${running} of ${apps.length} apps running there.`
     : "It offers no apps to this device yet.";
+  if (state.moved_from) status.textContent += " It had a new address on the Wi-Fi; Forge found it.";
   row.append(action("Open Forge", where(c.host), false));
   if (may.includes("remote")) row.append(action("Remote", where(c.host, "remote")));
   if (may.includes("media")) row.append(action("Music, videos, pictures", where(c.host, "files")));
@@ -252,8 +260,9 @@ window.forgeAnswer = (r) => {
     return;
   }
   if (r.resumed) {
-    // back from the Visualiser, Wallpaper and widgets or Android's installer
+    // back from the Visualiser, Wallpaper and widgets, Android's wallpaper screen or its installer
     lookNow();
+    loadWalls();
     loadUpdate();
     return;
   }
@@ -387,6 +396,118 @@ fetch("/visualiser/looks.json")
   })
   .catch(() => {});
 greet();
+
+// Wallpapers (task 1322): Forge's own picker. A theme or a visualiser look is
+// used as the live wallpaper (it changes at once when that Forge wallpaper is
+// already in use; otherwise Android asks once), or a theme's picture is set
+// as a plain still wallpaper. Main.java does the setting.
+const walls = { tab: "theme", themes: [], looks: [], now: {}, pick: { theme: "", visualiser: "" } };
+const hexColour = /^#[0-9a-f]{6}$/i;
+
+function wallCard(kind, item) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "wall";
+  b.setAttribute("role", "option");
+  b.setAttribute("aria-selected", String(walls.pick[kind] === item.id));
+  const c = item.colours || {};
+  if (kind === "theme" && /^walls\/[a-z0-9._-]+\.(jpg|png|webp)$/.test(item.wall || "")) {
+    b.style.backgroundImage = `url("/${item.wall}")`;
+  } else if (kind === "theme") {
+    b.style.background = `linear-gradient(150deg, ${item.accent}, ${item.bg})`;
+  } else if (hexColour.test(c.primary || "") && hexColour.test(c.background || "")) {
+    const second = hexColour.test(c.secondary || "") ? c.secondary : c.primary;
+    b.style.background = `radial-gradient(circle at 30% 75%, ${c.primary}, transparent 42%), radial-gradient(circle at 75% 30%, ${second}, transparent 50%), ${c.background}`;
+  }
+  const name = document.createElement("span");
+  name.textContent = item.label || item.name || item.id;
+  b.append(name);
+  const on = walls.now.now === kind && (kind === "theme" ? walls.now.theme : walls.now.look) === item.id;
+  if (on) {
+    const tag = document.createElement("span");
+    tag.className = "on";
+    tag.textContent = "On now";
+    b.append(tag);
+  }
+  b.addEventListener("click", () => {
+    walls.pick[kind] = item.id;
+    showWalls();
+  });
+  return b;
+}
+
+function wallButton(label, href, quiet) {
+  const a = document.createElement("a");
+  a.className = quiet ? "button quiet" : "button";
+  a.href = href;
+  a.textContent = label;
+  return a;
+}
+
+function showWalls() {
+  const kind = walls.tab;
+  const list = kind === "theme" ? walls.themes : walls.looks;
+  document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === kind)));
+  $("wall-grid").replaceChildren(...list.map((item) => wallCard(kind, item)));
+  const n = walls.now;
+  const themeName = (walls.themes.find((t) => t.id === n.theme) || {}).label || n.theme;
+  const lookName = (walls.looks.find((l) => l.id === n.look) || {}).name || n.look;
+  $("walls-now").textContent =
+    n.now === "theme" ? `On now: Forge particles, ${themeName}`
+      : n.now === "visualiser" ? `On now: the visualiser, ${lookName}`
+        : n.now === "other" ? "On now: another app's live wallpaper"
+          : n.now === "still" ? "On now: a still picture" : "";
+  const id = walls.pick[kind];
+  const item = list.find((x) => x.id === id);
+  const actions = [];
+  if (item) {
+    const live = new URLSearchParams({ kind, id });
+    const ours = n.now === kind;
+    actions.push(wallButton(ours ? "Use it now" : "Set as live wallpaper", `/wall-live?${live}`));
+    if (kind === "theme") {
+      for (const [where, label] of [["home", "Still: home screen"], ["lock", "Still: lock screen"], ["both", "Still: both"]]) {
+        actions.push(wallButton(label, `/wall-still?${new URLSearchParams({ id, where })}`, true));
+      }
+    }
+    $("wall-note").textContent = ours
+      ? "Changes at once: this Forge wallpaper is already on."
+      : "Android shows the wallpaper once to confirm; after that Forge switches it with no questions.";
+  } else {
+    $("wall-note").textContent = "Pick one to see what you can do with it.";
+  }
+  $("wall-actions").replaceChildren(...actions);
+}
+
+function loadWalls() {
+  fetch("/walls.json", { cache: "no-store" })
+    .then((r) => r.json())
+    .then((n) => {
+      walls.now = n;
+      if (!walls.pick.theme) walls.pick.theme = n.theme || "";
+      if (!walls.pick.visualiser) walls.pick.visualiser = n.look || "";
+      if (n.pin === false) $("widgets-note").textContent = "This home screen adds widgets itself: long-press it, then Widgets, then Forge.";
+      showWalls();
+    })
+    .catch(() => {});
+}
+
+Promise.all([
+  fetch("/themes.json").then((r) => r.json()),
+  fetch("/visualiser/presets.json").then((r) => r.json()),
+])
+  .then(([themes, looks]) => {
+    walls.themes = (Array.isArray(themes) ? themes : []).filter((t) => t && t.id);
+    walls.looks = (Array.isArray(looks) ? looks : looks.presets || []).filter((l) => l && l.id);
+    $("walls").hidden = !walls.themes.length && !walls.looks.length;
+    loadWalls();
+  })
+  .catch(() => {});
+document.querySelectorAll(".tab").forEach((t) =>
+  t.addEventListener("click", () => {
+    walls.tab = t.dataset.tab;
+    showWalls();
+  }),
+);
 
 let update = {};
 

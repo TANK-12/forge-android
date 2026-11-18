@@ -734,7 +734,8 @@ def find_builds(reg: dict | None = None, plat: str | None = None) -> list:
                 )
                 break
     try:
-        sys.path.insert(0, str(HERE))
+        if str(HERE) not in sys.path:
+            sys.path.insert(0, str(HERE))
         import forge_jan
 
         jan = forge_jan.JAN_DATA / "backends"

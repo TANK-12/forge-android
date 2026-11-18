@@ -32,6 +32,32 @@
     <span class="muted" id="share-how"></span>
   </section>
 
+  <section class="card walls" id="walls" hidden>
+    <div class="walls-head">
+      <h2>Wallpapers</h2>
+      <span class="muted" id="walls-now"></span>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Kind of wallpaper">
+      <button type="button" class="tab" role="tab" data-tab="theme" aria-selected="true">Forge particles</button>
+      <button type="button" class="tab" role="tab" data-tab="visualiser" aria-selected="false">Visualiser</button>
+    </div>
+    <div class="wall-grid" id="wall-grid" role="listbox" aria-label="Wallpapers"></div>
+    <div class="row wall-actions" id="wall-actions"></div>
+    <p class="note" id="wall-note"></p>
+  </section>
+
+  <section class="card" id="widgets">
+    <h2>Widgets</h2>
+    <p class="note" id="widgets-note">Put one on the home screen: Android asks where. Long-press it there to resize; tap it to open Forge.</p>
+    <div class="row">
+      <a class="button quiet" href="/widget-add?kind=particles">Particles</a>
+      <a class="button quiet" href="/widget-add?kind=visualiser">Visualiser</a>
+      <a class="button quiet" href="/widget-add?kind=clock">Clock</a>
+      <a class="button quiet" href="/widget-add?kind=music">Music keys</a>
+      <a class="button quiet" href="/widget-add?kind=jobs">Forge jobs</a>
+    </div>
+  </section>
+
   <div class="cols">
     <div class="main">
       <h2>Your computers</h2>

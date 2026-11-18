@@ -42,7 +42,9 @@ package (`<package>.frames`) so both can be installed at once.
 ## Battery
 
 Both draw only while they can be seen (0% CPU when hidden, measured on the
-emulator), at 30 frames a second at most (a setting), 15 on Battery Saver,
+emulator), at 30 frames a second at most (a setting; the visualiser's full
+screen offers 30, 60, 90 or 120 and asks Android for a screen mode that fast,
+task 1320), 15 on Battery Saver,
 and a still picture under 15% battery. Sound is listened to only while
 drawing. Showpiece looks draw at a lower resolution by default.
 

@@ -11,6 +11,7 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.Display;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -118,6 +119,46 @@ public final class PlayerActivity extends Activity implements Bridge.Actions {
 
   @Override public void close() {
     finish();
+  }
+
+  /** Ask Android for a display mode fast enough for the frame rate allowed
+      (Relay task 1320): a 90 or 120 Hz screen often stays at 60 for a page
+      nobody is touching. 60 or less leaves the choice to the system. */
+  @Override public void rate(int fps) {
+    Display.Mode mode = fps > 60 ? modeFor(screen(), fps) : null;
+    WindowManager.LayoutParams lp = getWindow().getAttributes();
+    int id = mode == null ? 0 : mode.getModeId();
+    float hz = mode == null ? 0f : mode.getRefreshRate();
+    if (lp.preferredDisplayModeId == id && lp.preferredRefreshRate == hz) return;
+    lp.preferredDisplayModeId = id;
+    lp.preferredRefreshRate = hz;
+    getWindow().setAttributes(lp);
+  }
+
+  private Display screen() {
+    return Build.VERSION.SDK_INT >= 30 ? getDisplay() : screenOld();
+  }
+
+  @SuppressWarnings("deprecation")
+  private Display screenOld() {
+    return getWindowManager().getDefaultDisplay();
+  }
+
+  /** The screen's mode at its present size with the lowest refresh rate that
+      reaches fps (90 for 90 when it has one, else 120), or its fastest when
+      none does; null when nothing beats 60 Hz. */
+  static Display.Mode modeFor(Display display, int fps) {
+    if (display == null) return null;
+    Display.Mode now = display.getMode(), pick = null, fastest = null;
+    for (Display.Mode m : display.getSupportedModes()) {
+      if (m.getPhysicalWidth() != now.getPhysicalWidth()
+          || m.getPhysicalHeight() != now.getPhysicalHeight()) continue;
+      if (fastest == null || m.getRefreshRate() > fastest.getRefreshRate()) fastest = m;
+      if (m.getRefreshRate() >= fps - 1f
+          && (pick == null || m.getRefreshRate() < pick.getRefreshRate())) pick = m;
+    }
+    if (pick == null) pick = fastest;
+    return pick != null && pick.getRefreshRate() > 61f ? pick : null;
   }
 
   private void fullScreen() {

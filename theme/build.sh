@@ -38,8 +38,15 @@ for app in "${apps[@]}"; do
   # common/res (shared drawables) first, the app's own res over it
   "$BT/aapt2" compile --dir "$HERE/common/res" -o "$STAGE/common.zip"
   "$BT/aapt2" compile --dir "$SRC/res" -o "$STAGE/res.zip"
+  # Forge Theme's particles widget: moving pictures per kind (task 1322)
+  WRES=()
+  if [ "$app" = theme ]; then
+    "$PY" "$HERE/make_widget_res.py" "$STAGE/assets/particles.json" "$STAGE/wres"
+    "$BT/aapt2" compile --dir "$STAGE/wres" -o "$STAGE/wres.zip"
+    WRES=("$STAGE/wres.zip")
+  fi
   "$BT/aapt2" link -o "$STAGE/base.apk" -I "$JAR" --manifest "$SRC/AndroidManifest.xml" \
-    -A "$STAGE/assets" "$STAGE/common.zip" "$STAGE/res.zip" --java "$STAGE/gen" \
+    -A "$STAGE/assets" "$STAGE/common.zip" ${WRES[@]+"${WRES[@]}"} "$STAGE/res.zip" --java "$STAGE/gen" \
     --auto-add-overlay -0 png -0 jpg
   javac -Xlint:all -Xlint:-options --release 17 -classpath "$JAR" -d "$STAGE/classes" \
     $(find "$HERE/common/src" "$SRC/src" "$STAGE/gen" -name '*.java')
