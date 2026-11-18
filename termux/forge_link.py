@@ -59,6 +59,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -68,6 +69,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import forge_gpu  # noqa: E402
+import forge_platform  # noqa: E402
 import forge_tunnel  # noqa: E402
 
 LINKS = {
@@ -84,6 +86,7 @@ RPC_INNER = 50152  # ggml-rpc-server behind the gate, 127.0.0.1 only
 SPLIT_PORT = 18090  # a split model's API on this PC, 127.0.0.1 only
 SPLIT_STATE = "forge-link-split.json"  # in the runtime dir while a split runs
 CONTEXT = 8192
+RESTART = 75  # _run_child stopped the server because a lent GPU went away
 MODULES_FILE = Path("/etc/modules-load.d/thunderbolt-net.conf")
 SYS_NET = Path("/sys/class/net")
 SYS_TB = Path("/sys/bus/thunderbolt/devices")
@@ -265,13 +268,22 @@ def setup(side: str, dry: bool = False) -> None:
             ["nmcli", "con", "add", "type", "ethernet", "con-name", prof]
             + ["ifname", ports[0], "ipv4.method", "auto"]
             + ["ipv4.addresses", f"{ip}/{PREFIX}", "ipv4.may-fail", "yes"]
-            + ["ipv4.dhcp-timeout", "infinity", "ipv6.method", "auto"]
+            + [
+                "ipv4.dhcp-timeout",
+                "infinity",
+                "ipv4.link-local",
+                "enabled",
+                "ipv6.method",
+                "auto",
+            ]
             + ["connection.autoconnect", "yes"]
             # below his own wired profile (0): on a port that already has
             # one, his keeps winning and this one is the fallback
             + ["connection.autoconnect-priority", "-10"],
             dry,
         )
+    elif prof in have:
+        run(["nmcli", "con", "modify", prof, "ipv4.link-local", "enabled"], dry)
     elif not ports:
         print("No ethernet port found: plug in a USB ethernet adapter and run again")
     print(
@@ -398,6 +410,61 @@ def _flags(server: str) -> str:
         return ""
 
 
+RPC_CACHE_MIN_FREE_GB = 40
+
+
+def rpc_cache_dir() -> Path:
+    """Where ggml-rpc-server -c keeps weights: llama.cpp's cache folder
+    ($LLAMA_CACHE, else %LOCALAPPDATA%\\llama.cpp on Windows, else
+    ~/.cache/llama.cpp) and its rpc folder."""
+    if os.environ.get("LLAMA_CACHE"):
+        base = Path(os.environ["LLAMA_CACHE"])
+    elif os.name == "nt" and os.environ.get("LOCALAPPDATA"):
+        base = Path(os.environ["LOCALAPPDATA"]) / "llama.cpp"
+    else:
+        xdg = os.environ.get("XDG_CACHE_HOME")
+        base = (Path(xdg) if xdg else Path.home() / ".cache") / "llama.cpp"
+    return base / "rpc"
+
+
+def rpc_cache_args(exe: str, min_free_gb: float = RPC_CACHE_MIN_FREE_GB):
+    """(["-c"] or [], why): ggml-rpc-server's weights cache keeps a split
+    model's big tensors on this PC's disk, so the next load of the same
+    model sends hashes over the link instead of gigabytes (llama.cpp PR
+    12496/28789; both ends must run the same build). The cache only grows,
+    so it stays off while its disk has under min_free_gb free: point
+    LLAMA_CACHE at a roomier drive to turn it on there."""
+    try:
+        done = subprocess.run(
+            [exe, "--help"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env=forge_gpu.build_env(exe),
+            stdin=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        have = (done.stdout or "") + (done.stderr or "")  # usage goes to stderr
+    except (OSError, subprocess.TimeoutExpired):
+        have = ""
+    if "--cache" not in have:
+        return [], "off (this build has none)"
+    folder = rpc_cache_dir()
+    probe = folder
+    while not probe.exists() and probe.parent != probe:
+        probe = probe.parent
+    try:
+        free_gb = shutil.disk_usage(probe).free / 2**30
+    except OSError:
+        return [], f"off ({folder} cannot be read)"
+    if free_gb < min_free_gb:
+        return [], (
+            f"off ({free_gb:.0f} GB free where it would live, {folder};"
+            f" it needs {min_free_gb:.0f} GB: set LLAMA_CACHE to a roomier drive)"
+        )
+    return ["-c"], f"on, in {folder} ({free_gb:.0f} GB free)"
+
+
 def _server_args(server: str) -> list[str]:
     """Quiet, private defaults: no web page, no slot listing (it shows the
     prompts being worked on), our split kept as planned."""
@@ -461,13 +528,26 @@ def split_state(path: Path | None = None) -> dict | None:
     path = path or _state_path()
     try:
         state = json.loads(path.read_text())
-        os.kill(int(state["pid"]), 0)
+        pid = int(state["pid"])
     except (OSError, ValueError, KeyError, TypeError):
+        return None
+    try:
+        if not forge_platform.pid_alive(pid):  # not os.kill 0: Windows (task 843)
+            raise ProcessLookupError(pid)
+        # a split killed outright leaves its file behind, and its pid may
+        # since belong to another program: that is no split
+        cmd = Path(f"/proc/{pid}/cmdline")
+        if cmd.exists() and not re.search(rb"forge_(link|petal)", cmd.read_bytes()):
+            raise ProcessLookupError(pid)
+    except OSError:
+        path.unlink(missing_ok=True)
         return None
     return state if isinstance(state, dict) else None
 
 
-def _run_child(cmd: list[str], server: str, gates: list, lock: _Lock) -> int:
+def _run_child(
+    cmd: list[str], server: str, gates: list, lock: _Lock, watch=None
+) -> int:
     """Run the model server until it ends (or Ctrl-C / SIGTERM), then close
     the gates. Its output goes to this terminal only, never to a file. The
     server inherits the GPU lock, so it stays held while the server runs
@@ -478,9 +558,17 @@ def _run_child(cmd: list[str], server: str, gates: list, lock: _Lock) -> int:
 
     signal.signal(signal.SIGTERM, stop)
     keep = (lock.fd,) if lock.fd is not None else ()
+    setpriv = shutil.which("setpriv") if sys.platform.startswith("linux") else None
+    if setpriv:  # the server dies with this process, even when it is SIGKILLed
+        cmd = [setpriv, "--pdeathsig", "KILL", "--", *cmd]
     proc = subprocess.Popen(cmd, env=forge_gpu.build_env(server), pass_fds=keep)
     try:
-        return proc.wait()
+        while True:
+            try:
+                return proc.wait(2 if watch else None)
+            except subprocess.TimeoutExpired:
+                if watch and watch():
+                    return RESTART
     except KeyboardInterrupt:
         return 130
     finally:
@@ -581,10 +669,13 @@ def rpc(
     cmd = [exe, "-H", "127.0.0.1", "-p", str(RPC_INNER)]
     cmd += ["-d", dev["id"] if dev else "CPU"]
     cmd += ["-t", str(threads or max(1, (os.cpu_count() or 2) - 2))]
+    cache, why = rpc_cache_args(exe)
+    cmd += cache
     print("lending:", forge_gpu.summary(info))
     for n in info["notes"]:
         print("note:", n)
     print(f"rpc on {host}:{port} (locked; pairing key only)")
+    print("weights cache:", why)
     if dry:
         print("would run:", " ".join(cmd))
         lock.release()
@@ -640,29 +731,66 @@ def split(
                 f"{ip} is not lending its GPU: run forge_link.py rpc there"
             )
         remote.append((ip, rport, about, got))
-    info, lock = local_device(backend, need_rpc=True)  # --rpc needs the RPC library
-    build = info["build"]
-    if not build:
-        raise SystemExit("No llama.cpp build here: python3 forge_gpu.py fetch")
-    sides = _sides(info) + [
-        {
-            "id": f"RPC{i}",
-            "name": f"{about.get('host') or ip} ({about.get('summary', '')})",
-            "usable_mb": int(got.get("usable_mb") or 0),
-        }
-        for i, (ip, _, about, got) in enumerate(remote)
-    ]
-    plan = _plan_or_exit(model, sides, _cpu_room(info, sides))
-    local_mb = sum(s["mb"] for s in plan["sides"][: len(_sides(info))])
-    why = _room(local_mb + plan["cpu_mb"])
-    if why:
-        lock.release()
-        raise SystemExit(f"Not now: {why}")
-    print("this PC:", forge_gpu.summary(info))
-    _show(plan)
     tunnels = [
         forge_tunnel.Tunnel((ip, rport), key).start() for ip, rport, *_ in remote
     ]
+    lent = [
+        {
+            "name": f"{about.get('host') or ip} ({about.get('summary', '')})",
+            "usable_mb": int(got.get("usable_mb") or 0),
+        }
+        for ip, _, about, got in remote
+    ]
+    return run_split(model, lent, tunnels, port, backend, dry)
+
+
+def run_split(
+    model: str,
+    lent: list[dict],
+    tunnels: list,
+    port: int = SPLIT_PORT,
+    backend: str | None = None,
+    dry: bool = False,
+    use_here: bool = True,
+    watch=None,
+) -> int:
+    """Serve one model over this PC and GPUs lent by other PCs, each reached
+    on 127.0.0.1 through one of `tunnels` (anything with .port and
+    .close(): forge_tunnel's locked link or Petal's). lent: name and
+    usable_mb per tunnel, same order. use_here False keeps this PC's own
+    graphics out (its CPU still takes what the lent GPUs cannot). The
+    tunnels are closed when the server ends. watch: called every couple of
+    seconds; True stops the server (a lent GPU went away) with RESTART."""
+    try:
+        if use_here:
+            info, lock = local_device(backend, need_rpc=True)  # --rpc needs it
+        else:
+            info, lock = local_device("cpu", need_rpc=True)
+    except BaseException:
+        for t in tunnels:
+            t.close()
+        raise
+    try:
+        build = info["build"]
+        if not build:
+            raise SystemExit("No llama.cpp build here: python3 forge_gpu.py fetch")
+        mine = _sides(info) if use_here else []
+        sides = mine + [
+            {"id": f"RPC{i}", "name": r["name"], "usable_mb": r["usable_mb"]}
+            for i, r in enumerate(lent)
+        ]
+        plan = _plan_or_exit(model, sides, _cpu_room(info, sides))
+        local_mb = sum(s["mb"] for s in plan["sides"][: len(mine)])
+        why = _room(local_mb + plan["cpu_mb"])
+        if why:
+            raise SystemExit(f"Not now: {why}")
+    except BaseException:
+        for t in tunnels:
+            t.close()
+        lock.release()
+        raise
+    print("this PC:", forge_gpu.summary(info))
+    _show(plan)
     exe = build["server"]
     cmd = [exe, "-m", model, "--host", "127.0.0.1", "--port", str(port)]
     cmd += ["--rpc", ",".join(f"127.0.0.1:{t.port}" for t in tunnels)]
@@ -690,7 +818,7 @@ def split(
         )
     )
     try:
-        return _run_child(cmd, exe, tunnels, lock)
+        return _run_child(cmd, exe, tunnels, lock, watch)
     finally:
         state.unlink(missing_ok=True)
         lock.release()

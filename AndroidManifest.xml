@@ -1,10 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="app.forge.phone" android:versionCode="3" android:versionName="0.3">
+    package="app.forge.phone" android:versionCode="6" android:versionName="0.6">
   <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
   <uses-permission android:name="android.permission.INTERNET" />
+  <!-- this device's own Wi-Fi address, to find computers on the same network -->
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <!-- the jobs widget's 30-minute job survives a restart (JobInfo.setPersisted) -->
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+  <!-- the visualiser and the particles hear the music: this device's own sound
+       (Visualizer) or the microphone; asked the first time a sound source is picked -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+  <!-- updates (task 1316): Forge hands a newer copy of itself to Android's installer -->
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+  <uses-feature android:name="android.software.live_wallpaper" android:required="false" />
+  <uses-feature android:name="android.hardware.microphone" android:required="false" />
   <application android:label="@string/name" android:icon="@mipmap/icon"
       android:usesCleartextTraffic="false" android:allowBackup="false"
+      android:hardwareAccelerated="true"
       android:theme="@android:style/Theme.Material.NoActionBar">
     <activity android:name=".Main" android:exported="true" android:launchMode="singleTask"
         android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
@@ -13,6 +26,8 @@
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
+      <!-- long-press the icon: the visualiser, wallpaper and widgets -->
+      <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
       <!-- the pairing link Devices, Phones shows as a picture for the camera -->
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />
@@ -20,6 +35,72 @@
         <category android:name="android.intent.category.BROWSABLE" />
         <data android:scheme="forge-phone" android:host="pair" />
       </intent-filter>
+      <!-- Share, Forge: send files to a paired computer's inbox -->
+      <intent-filter android:label="@string/send">
+        <action android:name="android.intent.action.SEND" />
+        <action android:name="android.intent.action.SEND_MULTIPLE" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <data android:mimeType="*/*" />
+      </intent-filter>
     </activity>
+    <!-- Forge jobs on the home screen (Relay task 1301): JobsWidget, and its 30-minute job -->
+    <receiver android:name=".JobsWidget" android:exported="false" android:label="@string/jobs">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_jobs" />
+    </receiver>
+    <service android:name=".JobsWidget$Refresh" android:exported="false"
+        android:permission="android.permission.BIND_JOB_SERVICE" />
+    <!-- Android's installer answers here while an update installs (task 1316) -->
+    <receiver android:name=".Updates$Done" android:exported="false" />
+
+    <!-- The Forge Visualiser, folded in (task 1316; source phone/theme/visualiser).
+         Exported: the live wallpaper picker opens it as the wallpaper's settings. -->
+    <activity android:name="app.forge.visualiser.PlayerActivity" android:exported="true"
+        android:label="@string/viz_name" android:icon="@mipmap/viz_icon"
+        android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen"
+        android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
+    <service android:name="app.forge.visualiser.VizWallpaper" android:exported="true"
+        android:label="@string/viz_wallpaper" android:permission="android.permission.BIND_WALLPAPER">
+      <intent-filter>
+        <action android:name="android.service.wallpaper.WallpaperService" />
+      </intent-filter>
+      <meta-data android:name="android.service.wallpaper" android:resource="@xml/viz_wallpaper" />
+    </service>
+    <receiver android:name="app.forge.visualiser.VizWidget" android:exported="false"
+        android:label="@string/viz_widget">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_visualiser" />
+    </receiver>
+
+    <!-- Forge Theme, folded in (task 1316; source phone/theme/theme): the particles
+         wallpaper, its settings, and the clock, particles and music widgets -->
+    <activity android:name="app.forge.theme.ThemeActivity" android:exported="true"
+        android:label="@string/theme_in_forge" android:icon="@mipmap/theme_icon"
+        android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize" />
+    <service android:name="app.forge.theme.ThemeWallpaper" android:exported="true"
+        android:label="@string/theme_wallpaper" android:permission="android.permission.BIND_WALLPAPER">
+      <intent-filter>
+        <action android:name="android.service.wallpaper.WallpaperService" />
+      </intent-filter>
+      <meta-data android:name="android.service.wallpaper" android:resource="@xml/theme_wallpaper" />
+    </service>
+    <receiver android:name="app.forge.theme.Widgets$ClockWidget" android:exported="false"
+        android:label="@string/clock">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_clock" />
+    </receiver>
+    <receiver android:name="app.forge.theme.Widgets$ParticlesWidget" android:exported="false"
+        android:label="@string/particles_widget">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_particles" />
+    </receiver>
+    <receiver android:name="app.forge.theme.Widgets$MusicWidget" android:exported="false"
+        android:label="@string/music">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_music" />
+    </receiver>
+    <!-- the particles widget's frames, for the home screen to read -->
+    <provider android:name="app.forge.theme.FramesProvider"
+        android:authorities="app.forge.phone.frames" android:exported="true" />
   </application>
 </manifest>

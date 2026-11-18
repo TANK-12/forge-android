@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="app.forge.theme.ThemeActivity"
+    android:thumbnail="@mipmap/theme_icon" android:description="@string/theme_about_wallpaper" />

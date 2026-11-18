@@ -3,6 +3,20 @@
   "release": "https://github.com/ggml-org/llama.cpp/releases/download/{build}/{asset}",
   "default_build": "b11980",
   "builds_dir": "~/.local/share/forge/llama.cpp",
+  "sha256": {
+    "_about": "sha256 of release assets, from GitHub's own record of the b11980 release (2026-10-29); forge_gpu.fetch checks a download against it, refuses a mismatch and does not download an asset missing here (task 981). Bumping default_build means adding its assets here.",
+    "llama-b11980-bin-win-cuda-12.4-x64.zip": "7a0199ea2b9299d32c222ca5ee73fd9ffc788b93d3a8b9910e1c148c69f3168a",
+    "llama-b11980-bin-ubuntu-rocm-10.0-x64.tar.gz": "98cc2d0565a161941b22ed74874099a297dbad7daa97d906f319d959674606ca",
+    "llama-b11980-bin-ubuntu-sycl-fp16-x64.tar.gz": "9f01868dfedee39ec0ee07afd97335233a6853815556b409ca5cdf347c7c315b",
+    "llama-b11980-bin-win-rocm-10.0-x64.zip": "131b9d11d47fb1235f766adb21500ec5fb3503f495a4d284e27c8fb86314994a",
+    "llama-b11980-bin-win-sycl-x64.zip": "c27a7a52e6038c5ccf14cb5d98726774c3c80dbde9cbd6bb2aea8f4dbb2d7a1f",
+    "cudart-llama-bin-win-cuda-12.4-x64.zip": "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6",
+    "llama-b11980-bin-ubuntu-cuda-12.8-x64.tar.gz": "b8a992b3f63fcb47fe33f92aa4f587b2103ee85545fba06f1c94423e29afdabc",
+    "llama-b11980-bin-win-vulkan-x64.zip": "9b3acb66bbdc317a77e8334b3d37bd3edb7c81d0bfc094d0a36a4e83e3733187",
+    "llama-b11980-bin-ubuntu-vulkan-x64.tar.gz": "71343e8de397b4020339d003571d1ebf75c6f66ab054e891ecd75a494f7f8cdc",
+    "llama-b11980-bin-win-cpu-x64.zip": "f56c3a8a145bc08cbd5824bc0c4b8aacf91ba8fc5984ed5cdf913f91fd68a1fb",
+    "llama-b11980-bin-ubuntu-x64.tar.gz": "589606b9cef85d05ab0d9db14c8307f2b1aef8621dfaaa0eea777492d66bf1e3"
+  },
   "backends": [
     {
       "id": "cuda",

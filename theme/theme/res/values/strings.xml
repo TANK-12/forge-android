@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="theme_name">Forge Theme</string>
+  <string name="theme_wallpaper">Forge particles</string>
+  <string name="theme_about_wallpaper">Forge theme pictures with Forge particles drifting over every home screen page. They move with your pages, scatter at a tap and can dance to music.</string>
+  <string name="clock">Forge clock</string>
+  <string name="about_clock">Time and date in your Forge theme colours.</string>
+  <string name="particles_widget">Forge particles</string>
+  <string name="about_particles_widget">A small window of Forge particles over your theme picture.</string>
+  <string name="music">Forge music keys</string>
+  <string name="about_music">Play, pause and skip whatever is playing; switch particles; open Forge Visualiser.</string>
+</resources>

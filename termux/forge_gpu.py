@@ -26,13 +26,17 @@ free. Layers left on the CPU come out of the same RAM.
     forge_gpu.py plan MODEL.gguf [--peer MB ...]  how its layers would split
 
 Builds go to ~/.local/share/forge/llama.cpp/<build>/<backend>/ (downloaded
-only by `fetch`, from the ggml-org/llama.cpp GitHub releases). Jan's own
+only by `fetch`, from the ggml-org/llama.cpp GitHub releases, and only a file
+whose SHA-256 is in llama_backends.json). Jan's own
 builds are used too when they fit, but they have no RPC server.
 """
 
 from __future__ import annotations
 
 import argparse
+import ctypes
+import functools
+import hashlib
 import json
 import os
 import re
@@ -47,6 +51,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REGISTRY = HERE / "llama_backends.json"
+SETTING = "ai_backend"  # Settings > Graphics and processor
 LIST_TIMEOUT = 30.0
 DEVICE_RE = re.compile(
     r"^\s*(?P<id>[A-Za-z]+\d+):\s*(?P<name>.*?)\s*\((?P<total>\d+) MiB,"
@@ -54,10 +59,23 @@ DEVICE_RE = re.compile(
 )
 VK_UMA_RE = re.compile(r"ggml_vulkan:\s*(\d+)\s*=\s*.*?\|\s*uma:\s*(\d)")
 # Intel discrete (Arc) device ids: DG2/Alchemist 0x56xx, Battlemage 0xe2xx
+PCI_IDS = (Path("/usr/share/hwdata/pci.ids"), Path("/usr/share/misc/pci.ids"))
+WINDOWS = os.name == "nt"
+ADAPTER_RE = re.compile(r"luid_(0x[0-9a-fA-F]+)_(0x[0-9a-fA-F]+)_phys_(\d+)")
+# Intel discrete (Arc) device ids: DG2/Alchemist 0x56xx, Battlemage 0xe2xx
 INTEL_DISCRETE = re.compile(r"^0x(56|e2)[0-9a-f]{2}$")
 AMD_IGPU_NAME = re.compile(
     r"radeon(\(tm\))?\s+((\d{3,4}[ms]?\s+)?graphics\b|vega\s*\d+\s*graphics|\d{3}m\b)",
     re.I,
+)
+
+
+# Under pythonw (Petal's helper on Windows) a console program started
+# without this opens a console window on the screen for a moment.
+QUIET = (
+    {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+    if os.name == "nt"
+    else {}
 )
 
 
@@ -131,10 +149,12 @@ def linux_gpus(
     root: Path = Path("/sys/class/drm"),
     reg: dict | None = None,
     kfd_root: Path = Path("/sys/class/kfd/kfd/topology/nodes"),
+    pci_ids: tuple = PCI_IDS,
 ) -> list:
     """The graphics devices in /sys/class/drm (one per card): vendor, kind,
-    and memory when the driver tells it (amdgpu does; i915 and nvidia
-    do not)."""
+    the name pci.ids gives it, whether it is an eGPU, and memory when the
+    driver tells it (amdgpu does; i915 and nvidia do not: nvidia-smi adds
+    an NVIDIA card's in system_gpus, and an iGPU's memory is the RAM)."""
     reg = reg or load_registry()
     out = []
     kfd = apu_locations(kfd_root)
@@ -157,10 +177,15 @@ def linux_gpus(
             kind = _amd_kind(dev, total, kfd)
         else:
             kind = "discrete"
+        raw = pci_name(vid, did, pci_ids)
         out.append(
             {
-                "name": f"{vendor.upper() if vendor == 'amd' else vendor.title()}"
-                f" GPU {did}",
+                "name": (
+                    nice_name(raw, vendor)
+                    if raw
+                    else f"{vendor.upper() if vendor == 'amd' else vendor.title()}"
+                    f" GPU {did}"
+                ),
                 "vendor": vendor,
                 "kind": kind,
                 "pci": f"{vid}:{did}",
@@ -169,6 +194,9 @@ def linux_gpus(
                 "pdev": os.path.basename(os.path.realpath(dev)),
                 "total_mb": total,
                 "free_mb": None if total is None or used is None else total - used,
+                # behind a Thunderbolt/USB4 port: the kernel marks the device
+                # removable (an eGPU); it works like any card of its kind
+                "external": _read(dev / "removable") == "removable",
                 "source": "sysfs",
             }
         )
@@ -179,20 +207,62 @@ def _mb(raw: str) -> int | None:
     return int(raw) // (1024 * 1024) if raw.isdigit() else None
 
 
-def nvidia_gpus(run=subprocess.run) -> list:
-    """NVIDIA cards from nvidia-smi (name, total and free memory)."""
-    if not shutil.which("nvidia-smi"):
+def nvidia_smi(
+    plat: str | None = None, env: dict | None = None, which=shutil.which
+) -> str | None:
+    """nvidia-smi's path: on PATH, else where NVIDIA's Windows driver puts it
+    (System32 since the DCH drivers, NVSMI before them, and the driver
+    store, which a fresh install sometimes leaves off PATH). The search off
+    PATH runs once per process (the driver store is a big folder); a driver
+    installed since is found after a restart."""
+    found = which("nvidia-smi")
+    if found:
+        return found
+    if os_name(plat) != "windows":
+        return None
+    vals = dict(os.environ) if env is None else env
+    root = Path(vals.get("SystemRoot") or vals.get("windir") or "C:\\Windows")
+    progs = vals.get("ProgramW6432") or vals.get("ProgramFiles") or "C:\\Program Files"
+    key = (str(root), str(progs))
+    if key in _SMI_FOUND:
+        return _SMI_FOUND[key]
+    places = [
+        root / "System32" / "nvidia-smi.exe",
+        Path(progs) / "NVIDIA Corporation" / "NVSMI" / "nvidia-smi.exe",
+    ]
+    try:
+        store = root / "System32" / "DriverStore" / "FileRepository"
+        places += sorted(
+            store.glob("nv*/nvidia-smi.exe"),
+            key=lambda q: q.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        pass
+    _SMI_FOUND[key] = next((str(q) for q in places if q.is_file()), None)
+    return _SMI_FOUND[key]
+
+
+# nvidia_smi's search off PATH, by (SystemRoot, Program Files)
+_SMI_FOUND: dict[tuple[str, str], str | None] = {}
+
+
+def nvidia_gpus(run=subprocess.run, exe: str | None = None) -> list:
+    """NVIDIA cards from nvidia-smi (name, total and free memory, PCI bus)."""
+    exe = exe or nvidia_smi()
+    if not exe:
         return []
     try:
         done = run(
             [
-                "nvidia-smi",
-                "--query-gpu=name,memory.total,memory.free",
+                exe,
+                "--query-gpu=name,memory.total,memory.free,pci.bus_id",
                 "--format=csv,noheader,nounits",
             ],
             capture_output=True,
             text=True,
             timeout=10,
+            **QUIET,
         )
     except (OSError, subprocess.TimeoutExpired):
         return []
@@ -200,18 +270,23 @@ def nvidia_gpus(run=subprocess.run) -> list:
 
 
 def parse_nvidia_smi(text: str) -> list:
+    """One row per card. A memory nvidia-smi cannot read ([N/A], [Not
+    Supported]) is None, and the card is kept."""
     out = []
     for line in text.splitlines():
         parts = [p.strip() for p in line.split(",")]
-        if len(parts) != 3 or not parts[1].isdigit():
+        if len(parts) not in (3, 4) or not parts[0]:
+            continue
+        if not (parts[1].isdigit() or parts[1].startswith("[")):
             continue
         out.append(
             {
                 "name": parts[0],
                 "vendor": "nvidia",
                 "kind": "discrete",
-                "total_mb": int(parts[1]),
+                "total_mb": int(parts[1]) if parts[1].isdigit() else None,
                 "free_mb": int(parts[2]) if parts[2].isdigit() else None,
+                "bus": normal_bus(parts[3]) if len(parts) == 4 else "",
                 "source": "nvidia-smi",
             }
         )
@@ -219,8 +294,13 @@ def parse_nvidia_smi(text: str) -> list:
 
 
 def windows_gpus(run=subprocess.run, reg: dict | None = None) -> list:
-    """Video controllers from Windows (PowerShell CIM). AdapterRAM is a
-    32-bit field (wrong above 4 GB), so memory comes from llama.cpp."""
+    """The graphics adapters on Windows: DXGI first (name, the card's own
+    memory as a 64-bit size, and what is in use from the "GPU Adapter
+    Memory" counters Task Manager reads), PowerShell's Win32_VideoController
+    when DXGI gives nothing (its AdapterRAM is 32-bit: no size over 4 GB)."""
+    found = dxgi_gpus(reg=reg)
+    if found:
+        return found
     try:
         done = run(
             [
@@ -233,6 +313,7 @@ def windows_gpus(run=subprocess.run, reg: dict | None = None) -> list:
             capture_output=True,
             text=True,
             timeout=20,
+            **QUIET,
         )
     except (OSError, subprocess.TimeoutExpired):
         return []
@@ -284,18 +365,327 @@ def parse_windows_cim(text: str, reg: dict | None = None) -> list:
     return out
 
 
+def dxgi_gpus(
+    adapters: list | None = None,
+    used: dict | None = None,
+    reg: dict | None = None,
+) -> list:
+    """windows_gpus' rows from DXGI adapters and the per-adapter dedicated
+    memory in use ({luid: bytes}); both are read here when not given."""
+    reg = reg or load_registry()
+    adapters = dxgi_adapters() if adapters is None else adapters
+    if not adapters:
+        return []
+    if used is None:
+        pdh = Pdh({"dedicated": Pdh.COUNTERS["dedicated"]})
+        try:
+            used = adapter_memory(pdh.read().get("dedicated", []))
+        finally:
+            pdh.close()
+    out = []
+    for a in adapters:
+        vendor = reg["vendors"].get(a["vendor_id"], "other")
+        if vendor == "other" and a["dedicated_mb"] < 1:
+            continue  # Basic Render, remote-desktop and other virtual adapters
+        kind = kind_of(vendor, a["device_id"], a["name"], a["dedicated_mb"])
+        total = int(a["dedicated_mb"]) or None
+        busy = used.get(a["luid"])
+        free = None
+        if total and kind == "discrete" and busy is not None:
+            free = max(0, total - int(busy / 2**20))
+        out.append(
+            {
+                "name": a["name"],
+                "vendor": vendor,
+                "kind": kind,
+                "pci": f"{a['vendor_id']}:{a['device_id']}",
+                "total_mb": total if kind == "discrete" else None,
+                "free_mb": free,
+                "luid": a["luid"],
+                "source": "dxgi",
+            }
+        )
+    return out
+
+
 def system_gpus(plat: str | None = None, reg: dict | None = None) -> list:
     reg = reg or load_registry()
     if os_name(plat) == "windows":
         found = windows_gpus(reg=reg)
     else:
         found = linux_gpus(reg=reg)
-    smi = nvidia_gpus()
-    for card in found:  # nvidia-smi knows the name and memory sysfs lacks
-        if card["vendor"] == "nvidia" and smi:
-            best = smi.pop(0)
-            card.update({k: best[k] for k in ("name", "total_mb", "free_mb")})
+    return merge_smi(found, nvidia_gpus())
+
+
+def merge_smi(found: list, smi: list) -> list:
+    """nvidia-smi knows an NVIDIA card's name and memory (sysfs knows
+    neither, DXGI not what is free): every card on the same PCI bus first,
+    then the rows left over to the NVIDIA cards left over, in order. A
+    memory nvidia-smi does not know leaves the system's own. A card
+    nvidia-smi lists that the system did not is added."""
+    smi = list(smi)
+    pairs = []
+    cards = [c for c in found if c["vendor"] == "nvidia"]
+    for card in list(cards):
+        same = next(
+            (s for s in smi if s.get("bus") and s["bus"] == card.get("pdev")), None
+        )
+        if same:
+            smi.remove(same)
+            cards.remove(card)
+            pairs.append((card, same))
+    for card in cards:
+        if not smi:
+            break
+        if card.get("pdev") and any(s.get("bus") for s in smi):
+            continue  # a card with a known bus nvidia-smi did not list
+        pairs.append((card, smi.pop(0)))
+    for card, row in pairs:
+        card["name"] = row["name"]
+        for k in ("total_mb", "free_mb"):
+            if row[k] is not None or k not in card:
+                card[k] = row[k]
+        card["source"] = f"{card.get('source', '')}+nvidia-smi".lstrip("+")
     return found + smi
+
+
+# ------------------------------------------- names, DXGI and PDH (Windows)
+# Moved here from apps/monitor/gpus.py (Relay task 1154) so Forge Models,
+# Settings and Monitor read the same cards the same way.
+
+
+@functools.lru_cache(maxsize=64)
+def pci_name(vid: str, did: str, files=PCI_IDS) -> str | None:
+    """'Alder Lake-P GT2 [Iris Xe Graphics]' for 0x8086:0x46a8, from the
+    pci.ids list most Linux systems carry."""
+    vid, did = vid.lower().removeprefix("0x"), did.lower().removeprefix("0x")
+    for path in files:
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        inside = False
+        for line in lines:
+            if not line or line.startswith("#"):
+                continue
+            if not line.startswith("\t"):
+                inside = line[:4].lower() == vid
+            elif inside and not line.startswith("\t\t") and line[1:5].lower() == did:
+                return line[5:].strip()
+    return None
+
+
+def nice_name(raw: str | None, vendor: str) -> str:
+    """The marketing name in brackets when pci.ids has one."""
+    if not raw:
+        return vendor.title() + " GPU"
+    m = re.search(r"\[([^\]]+)\]\s*$", raw)
+    inner = m.group(1) if m else raw
+    brand = {"intel": "Intel", "amd": "AMD", "nvidia": "NVIDIA"}.get(vendor, "")
+    return (
+        inner if inner.lower().startswith(brand.lower()) else f"{brand} {inner}".strip()
+    )
+
+
+def normal_bus(bus: str) -> str:
+    """nvidia-smi says 00000000:01:00.0, sysfs says 0000:01:00.0."""
+    bus = bus.lower()
+    return bus[-12:] if len(bus) >= 12 else bus
+
+
+def luid_key(high: str | int, low: str | int) -> str:
+    h = int(high, 16) if isinstance(high, str) else high
+    lo = int(low, 16) if isinstance(low, str) else low
+    return f"{h & 0xFFFFFFFF:08x}{lo & 0xFFFFFFFF:08x}"
+
+
+def kind_of(vendor: str, did: str, name: str, dedicated_mb: float) -> str:
+    """forge_gpu's rules, plus: under 512 MB of its own memory is integrated."""
+    if vendor == "intel":
+        return "discrete" if INTEL_DISCRETE.match(did) else "integrated"
+    if vendor == "amd":
+        if AMD_IGPU_NAME.search(name) or dedicated_mb <= 1024:
+            return "integrated"
+        return "discrete"
+    if vendor == "nvidia":
+        return "discrete"
+    return "integrated" if dedicated_mb <= 512 else "discrete"
+
+
+def dxgi_adapters() -> list[dict]:
+    """[{name, vendor_id, device_id, dedicated_mb, shared_mb, luid}] through
+    CreateDXGIFactory1 / EnumAdapters1 / GetDesc1 (COM vtables by index)."""
+    if not WINDOWS:
+        return []
+    from ctypes import wintypes
+
+    class LUID(ctypes.Structure):
+        _fields_ = [("LowPart", wintypes.DWORD), ("HighPart", wintypes.LONG)]
+
+    class DESC1(ctypes.Structure):
+        _fields_ = [
+            ("Description", ctypes.c_wchar * 128),
+            ("VendorId", wintypes.UINT),
+            ("DeviceId", wintypes.UINT),
+            ("SubSysId", wintypes.UINT),
+            ("Revision", wintypes.UINT),
+            ("DedicatedVideoMemory", ctypes.c_size_t),
+            ("DedicatedSystemMemory", ctypes.c_size_t),
+            ("SharedSystemMemory", ctypes.c_size_t),
+            ("AdapterLuid", LUID),
+            ("Flags", wintypes.UINT),
+        ]
+
+    class GUID(ctypes.Structure):
+        _fields_ = [
+            ("a", wintypes.DWORD),
+            ("b", wintypes.WORD),
+            ("c", wintypes.WORD),
+            ("d", ctypes.c_ubyte * 8),
+        ]
+
+    iid = GUID(
+        0x770AAE78,
+        0xF26F,
+        0x4DBA,
+        (ctypes.c_ubyte * 8)(*b"\xa8\x29\x25\x3c\x83\xd1\xb3\x87"),
+    )
+    out: list[dict] = []
+    try:
+        dxgi = ctypes.WinDLL("dxgi")  # type: ignore[attr-defined]
+    except OSError:
+        return out
+    factory = ctypes.c_void_p()
+    if dxgi.CreateDXGIFactory1(ctypes.byref(iid), ctypes.byref(factory)) != 0:
+        return out
+
+    def method(obj: ctypes.c_void_p, index: int, *argtypes):
+        vtable = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))[0]
+        proto = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, *argtypes)  # type: ignore[attr-defined]
+        return proto(vtable[index])
+
+    try:
+        i = 0
+        while i < 16:
+            adapter = ctypes.c_void_p()
+            enum = method(factory, 12, wintypes.UINT, ctypes.POINTER(ctypes.c_void_p))
+            if enum(factory, i, ctypes.byref(adapter)) != 0:
+                break
+            desc = DESC1()
+            get_desc = method(adapter, 10, ctypes.POINTER(DESC1))
+            if get_desc(adapter, ctypes.byref(desc)) == 0 and not desc.Flags & 2:
+                out.append(
+                    {
+                        "name": desc.Description,
+                        "vendor_id": f"0x{desc.VendorId:04x}",
+                        "device_id": f"0x{desc.DeviceId:04x}",
+                        "dedicated_mb": desc.DedicatedVideoMemory / 2**20,
+                        "shared_mb": desc.SharedSystemMemory / 2**20,
+                        "luid": luid_key(
+                            desc.AdapterLuid.HighPart, desc.AdapterLuid.LowPart
+                        ),
+                    }
+                )
+            method(adapter, 2)(adapter)  # Release
+            i += 1
+    finally:
+        method(factory, 2)(factory)
+    return out
+
+
+def adapter_memory(items: list[tuple[str, float]]) -> dict:
+    """'GPU Adapter Memory' instances -> {luid: bytes} (summed over phys)."""
+    out: dict[str, float] = {}
+    for instance, value in items:
+        m = ADAPTER_RE.search(instance)
+        if m and value is not None:
+            key = luid_key(m.group(1), m.group(2))
+            out[key] = out.get(key, 0.0) + value
+    return out
+
+
+class Pdh:
+    """Wildcard performance counters read through pdh.dll."""
+
+    COUNTERS = {
+        "engine": r"\GPU Engine(*)\Utilization Percentage",
+        "dedicated": r"\GPU Adapter Memory(*)\Dedicated Usage",
+        "shared": r"\GPU Adapter Memory(*)\Shared Usage",
+    }
+
+    def __init__(self, counters: dict[str, str] | None = None) -> None:
+        self.ok = False
+        self.handles: dict[str, ctypes.c_void_p] = {}
+        self.counters = self.COUNTERS if counters is None else counters
+        if not WINDOWS:
+            return
+        try:
+            self.pdh = ctypes.WinDLL("pdh")  # type: ignore[attr-defined]
+            self.query = ctypes.c_void_p()
+            if self.pdh.PdhOpenQueryW(None, None, ctypes.byref(self.query)) != 0:
+                return
+            for name, path in self.counters.items():
+                handle = ctypes.c_void_p()
+                if (
+                    self.pdh.PdhAddEnglishCounterW(
+                        self.query, ctypes.c_wchar_p(path), None, ctypes.byref(handle)
+                    )
+                    == 0
+                ):
+                    self.handles[name] = handle
+            self.pdh.PdhCollectQueryData(self.query)
+            self.ok = bool(self.handles)
+        except (OSError, AttributeError):
+            self.ok = False
+
+    def close(self) -> None:
+        """Free the query (a one-off reading opens one each time)."""
+        query = getattr(self, "query", None)
+        if query is not None and query.value:
+            try:
+                self.pdh.PdhCloseQuery(query)
+            except (OSError, AttributeError):
+                pass
+            self.query = ctypes.c_void_p()
+        self.ok, self.handles = False, {}
+
+    def read(self) -> dict[str, list[tuple[str, float]]]:
+        if not self.ok:
+            return {}
+        from ctypes import wintypes
+
+        class VALUE(ctypes.Structure):
+            _fields_ = [("CStatus", wintypes.DWORD), ("doubleValue", ctypes.c_double)]
+
+        class ITEM(ctypes.Structure):
+            _fields_ = [("szName", ctypes.c_wchar_p), ("FmtValue", VALUE)]
+
+        if self.pdh.PdhCollectQueryData(self.query) != 0:
+            return {}
+        out = {}
+        for name, handle in self.handles.items():
+            size, count = wintypes.DWORD(0), wintypes.DWORD(0)
+            self.pdh.PdhGetFormattedCounterArrayW(
+                handle, 0x200, ctypes.byref(size), ctypes.byref(count), None
+            )
+            if not size.value:
+                out[name] = []
+                continue
+            buf = (ctypes.c_byte * size.value)()
+            status = self.pdh.PdhGetFormattedCounterArrayW(
+                handle, 0x200, ctypes.byref(size), ctypes.byref(count), buf
+            )
+            if status != 0:
+                out[name] = []
+                continue
+            items = ctypes.cast(buf, ctypes.POINTER(ITEM))
+            rows = []
+            for i in range(count.value):
+                item = items[i]
+                if item.FmtValue.CStatus in (0, 1):  # valid data, new data
+                    rows.append((item.szName or "", item.FmtValue.doubleValue))
+            out[name] = rows
+        return out
 
 
 # ------------------------------------------------------------------ builds
@@ -387,6 +777,55 @@ def build_env(server: str) -> dict:
     return env
 
 
+def setting() -> str:
+    """Forge's `ai_backend` setting (Settings > Graphics and processor),
+    "auto" when unset or unreadable."""
+    try:
+        if str(HERE) not in sys.path:
+            sys.path.insert(0, str(HERE))
+        import forge_theme  # pyright: ignore[reportMissingImports]  # shared/
+
+        value = forge_theme.load().get(SETTING)
+    except Exception:  # an optional extra: no settings file means auto
+        return "auto"
+    return value if isinstance(value, str) and value else "auto"
+
+
+def wanted(reg: dict, gpus: list, want: str | None = None) -> str | None:
+    """The backend asked for (`want`, else the setting) when it can serve
+    here: "cpu", or a known backend that suits one of these GPUs. None means
+    the automatic pick."""
+    want = want or setting()
+    if want == "cpu":
+        return want
+    for b in reg["backends"]:
+        if b["id"] == want and any(_suits(b, g) for g in gpus):
+            return want
+    return None
+
+
+def best_backend(
+    reg: dict | None = None, gpus: list | None = None, want: str | None = None
+) -> str:
+    """The build worth downloading for this computer's graphics: the one the
+    ai_backend setting (or `want`) names when it suits a GPU here, else the
+    first backend that suits one of its GPUs and wins over Vulkan, else the
+    CPU."""
+    reg = reg or load_registry()
+    gpus = system_gpus(reg=reg) if gpus is None else gpus
+    picked = wanted(reg, gpus, want)
+    if picked:
+        return picked
+    return next(
+        (
+            b["id"]
+            for b in reg["backends"]
+            if b["prefer_over_vulkan"] and any(_suits(b, g) for g in gpus)
+        ),
+        "cpu",
+    )
+
+
 def fetch(backend: str, build: str | None = None, reg: dict | None = None) -> Path:
     """Download and unpack the official llama.cpp release for `backend` on
     this OS into builds_dir/<build>/<backend>/. Returns that folder."""
@@ -401,13 +840,38 @@ def fetch(backend: str, build: str | None = None, reg: dict | None = None) -> Pa
         raise SystemExit(f"no official {entry['name']} build for {osn}")
     dest = builds_dir(reg) / build / backend
     dest.mkdir(parents=True, exist_ok=True)
+    # the pins are for default_build (cudart's name has no build number in it)
+    pins = (reg.get("sha256") or {}) if build == reg["default_build"] else {}
+    parts = []  # every file is checked before any is unpacked
     for asset in filter(None, assets):
         name = asset.format(build=build)
         url = reg["release"].format(build=build, asset=name)
         part = dest / (name + ".part")
+        want = pins.get(name)
+        if not want:  # never run a program whose bytes nobody wrote down
+            for _, p in parts:
+                p.unlink(missing_ok=True)
+            raise SystemExit(
+                f"{name} has no SHA-256 on record (only build"
+                f" {reg['default_build']} is pinned), so it is not downloaded"
+            )
         print("downloading", url, flush=True)
-        with urllib.request.urlopen(url, timeout=60) as r, part.open("wb") as f:
-            shutil.copyfileobj(r, f, 1 << 20)
+        digest = hashlib.sha256()
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r, part.open("wb") as f:
+                while chunk := r.read(1 << 20):
+                    digest.update(chunk)
+                    f.write(chunk)
+        except BaseException:  # a broken download leaves no half file behind
+            for _, p in parts + [(name, part)]:
+                p.unlink(missing_ok=True)
+            raise
+        if digest.hexdigest() != want:
+            for _, p in parts + [(name, part)]:
+                p.unlink(missing_ok=True)
+            raise SystemExit(f"{name} is not the file GitHub lists (sha256 differs)")
+        parts.append((name, part))
+    for name, part in parts:
         if name.endswith(".zip"):
             with zipfile.ZipFile(part) as z:
                 for member in z.namelist():  # nothing outside dest
@@ -502,6 +966,7 @@ def list_devices(server: str, extra: list[str] | None = None) -> list:
         capture_output=True,
         text=True,
         timeout=LIST_TIMEOUT,
+        **QUIET,
         env=build_env(server),
     )
     return parse_list_devices(done.stdout + "\n" + done.stderr)
@@ -649,7 +1114,24 @@ def detect(want: str | None = None, need_rpc: bool = False, probe=list_devices) 
     reg = load_registry()
     gpus = system_gpus(reg=reg)
     builds = find_builds(reg)
+    # Settings' pick (ai_backend) when the caller names none: kept when it
+    # serves here, else the automatic one with a note saying so
+    asked = setting() if want is None else "auto"
+    if asked != "auto":
+        want = wanted(reg, gpus, asked)
     chosen = pick(gpus, builds, want, reg, probe=probe, need_rpc=need_rpc)
+    if asked != "auto" and chosen["backend"] != asked:
+        why = "does not suit the graphics here"
+        if want is not None:  # it suits, but its build or driver failed now
+            why = "could not start just now"
+            notes = chosen["notes"]
+            chosen = pick(gpus, builds, None, reg, probe=probe, need_rpc=need_rpc)
+            chosen["notes"] = notes + chosen["notes"]
+        names = {b["id"]: b["name"] for b in reg["backends"]}
+        chosen["notes"].append(
+            f"{names.get(asked, asked)} is set in Forge settings but {why};"
+            f" using {chosen['name']}"
+        )
     ram = ram_available_mb()
     dev = chosen["device"]
     if dev:
@@ -798,6 +1280,85 @@ def plan_split(
     }
 
 
+# -------------------------------------------------------- PyTorch CUDA tuning
+
+
+def configure_torch_cuda(
+    torch_mod: object | None = None, *, fp16_accum: bool | None = None
+) -> dict:
+    """Turn on Ampere+ Tensor Core speedups in PyTorch when a CUDA GPU is
+    present (Relay task 898).
+
+    Consumer GeForce Ampere (sm_86, such as the RTX 3060) and Ada (sm_89)
+    cards run FP16 matrix math at half speed when accumulating in FP32
+    (cuBLAS's default, CUBLAS_COMPUTE_32F: ~27 TFLOPS on an RTX 3060 12 GB),
+    and at full speed when accumulating in FP16 (CUBLAS_COMPUTE_16F: ~51
+    TFLOPS). PyTorch 2.7+ exposes that switch as
+    `torch.backends.cuda.matmul.allow_fp16_accumulation`. Setting it alongside
+    TF32 and FP16 reduced-precision reductions gives the ~1.9x GEMM speedup in
+    pure software without kernel or UEFI register patches.
+
+    Pass `fp16_accum=False` or set `FORGE_TORCH_FP16_ACCUM=0` to keep FP32
+    accumulation on a workload that overflows FP16 sums.
+    """
+    if torch_mod is None:
+        try:
+            import importlib
+
+            torch_mod = importlib.import_module("torch")
+        except ImportError:
+            return {"available": False, "reason": "no torch"}
+    cuda = getattr(torch_mod, "cuda", None)
+    if cuda is None or not callable(getattr(cuda, "is_available", None)):
+        return {"available": False, "reason": "no cuda"}
+    try:
+        if not cuda.is_available():
+            return {"available": False, "reason": "cuda not available"}
+        cur = getattr(cuda, "current_device", None)
+        raw_dev = cur() if callable(cur) else 0
+        dev = raw_dev if isinstance(raw_dev, int) else 0
+        major, minor = cuda.get_device_capability(dev)
+        name = str(cuda.get_device_name(dev))
+    except Exception as exc:  # noqa: BLE001  # driver probe is optional
+        return {"available": False, "reason": str(exc)}
+    out: dict = {
+        "available": True,
+        "device_name": name,
+        "capability": [int(major), int(minor)],
+        "tf32": False,
+        "fp16_reduced_precision": False,
+        "fp16_accumulation": False,
+    }
+    backends = getattr(torch_mod, "backends", None)
+    matmul = getattr(getattr(backends, "cuda", None), "matmul", None)
+    cudnn = getattr(backends, "cudnn", None)
+    if major >= 8:
+        if matmul is not None:
+            if hasattr(matmul, "allow_tf32"):
+                matmul.allow_tf32 = True
+                out["tf32"] = True
+            if hasattr(matmul, "allow_fp16_reduced_precision_reduction"):
+                matmul.allow_fp16_reduced_precision_reduction = True
+                out["fp16_reduced_precision"] = True
+        if cudnn is not None and hasattr(cudnn, "allow_tf32"):
+            cudnn.allow_tf32 = True
+    env = os.environ.get("FORGE_TORCH_FP16_ACCUM", "").strip().lower()
+    if fp16_accum is not None:
+        want_accum = bool(fp16_accum)
+    elif env in ("0", "false", "no", "off"):
+        want_accum = False
+    elif env in ("1", "true", "yes", "on"):
+        want_accum = True
+    else:
+        # Consumer GeForce Ampere (sm_86) and Ada (sm_89) cap FP32-accumulate
+        # HMMA at half rate; datacentre sm_80 (A100) and sm_90 (H100) do not.
+        want_accum = (major, minor) in ((8, 6), (8, 9))
+    if matmul is not None and hasattr(matmul, "allow_fp16_accumulation"):
+        matmul.allow_fp16_accumulation = want_accum
+        out["fp16_accumulation"] = bool(matmul.allow_fp16_accumulation)
+    return out
+
+
 # --------------------------------------------------------------------- CLI
 
 
@@ -816,19 +1377,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--peer", type=int, nargs="*", default=[], help="peer usable MB")
     a = ap.parse_args(argv)
     if a.cmd == "fetch":
-        backend = a.backend
-        if not backend:
-            reg = load_registry()
-            gpus = system_gpus(reg=reg)
-            backend = next(
-                (
-                    b["id"]
-                    for b in reg["backends"]
-                    if b["prefer_over_vulkan"] and any(_suits(b, g) for g in gpus)
-                ),
-                "cpu",
-            )
-        print("unpacked into", fetch(backend, a.build))
+        print("unpacked into", fetch(a.backend or best_backend(), a.build))
         return 0
     info = detect(a.backend if a.cmd == "detect" else None, getattr(a, "rpc", False))
     if a.cmd == "plan":

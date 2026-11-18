@@ -8,54 +8,104 @@
 </head>
 <body>
 <main>
-  <header><img src="/icon.svg" alt="" width="40" height="40"><h1>Forge</h1></header>
+  <header class="hero" id="hero">
+    <div class="hero-top"><img src="/icon.svg" alt="" width="34" height="34"><span class="brand">Forge</span><span class="chip" id="hero-version"></span></div>
+    <h1 id="greet">Hello</h1>
+    <p id="hero-line">Your computers, your music and your look, in one place.</p>
+    <a class="offer" id="offer" href="#about" hidden><span id="offer-line"></span><b>Update</b></a>
+  </header>
 
-  <section class="card" id="home" hidden>
-    <h2>Your computer</h2>
-    <p id="home-line"></p>
-    <p class="err" id="home-error" hidden></p>
-    <div class="row">
-      <a class="button" href="/open" id="home-open">Open Forge</a>
-      <a class="button quiet" href="/forget" id="home-forget">Forget this computer</a>
+  <nav class="features" aria-label="On this phone">
+    <a class="feature viz" href="/visualiser" id="viz-tile">
+      <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      <span class="feature-text"><strong>Visualiser</strong><small id="viz-line">Your music, drawn live</small></span>
+      <span class="go" aria-hidden="true">Play</span>
+    </a>
+    <a class="feature look" href="/theme" id="look-tile">
+      <span class="feature-text"><strong>Wallpaper and widgets</strong><small id="look-line">Forge's themes on your home screen</small></span>
+      <span class="go quiet" aria-hidden="true">Open</span>
+    </a>
+  </nav>
+
+  <section class="banner" id="share" hidden role="status">
+    <strong id="share-line"></strong>
+    <span class="muted" id="share-how"></span>
+  </section>
+
+  <div class="cols">
+    <div class="main">
+      <h2>Your computers</h2>
+      <div id="computers" class="computers"></div>
+      <p class="muted" id="none" hidden>No computer yet. Add one below: Heat, Mirror or the XPS, each with Forge open.</p>
+
+      <details class="card" id="add">
+        <summary id="add-title">Add a computer</summary>
+        <p>On the computer, open Forge, then Devices, Phones. Turn on the phone link and choose Show a pairing code. This <span class="noun">device</span> and the computer must be on the same Wi-Fi.</p>
+        <div class="row">
+          <button type="button" class="quiet" id="scan">Find computers on this Wi-Fi</button>
+          <span class="muted" id="scan-line"></span>
+        </div>
+        <div id="found" class="found"></div>
+        <p class="note">Scan the picture under the code with the camera, paste the pairing link, or type what Devices shows.</p>
+        <input id="link" placeholder="Paste the pairing link (forge-phone://...)" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Pairing link">
+        <form action="/pair" method="get" id="pair-form">
+          <label>Address <input name="host" id="pair-host" placeholder="192.168.1.20" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" required></label>
+          <label>Check code <input name="check" id="pair-check" placeholder="ABCD-EFGH-JKLM-NPQR" autocapitalize="characters" autocomplete="off" spellcheck="false" required></label>
+          <label>Pairing code <input name="code" id="pair-code" placeholder="K7QM-2XPA" autocapitalize="characters" autocomplete="off" spellcheck="false" required></label>
+          <label>A name for this <span class="noun">device</span> <input name="name" id="pair-name" placeholder="My tablet" maxlength="40" autocomplete="off"></label>
+          <button type="submit" id="pair-go">Pair</button>
+        </form>
+        <p class="err" id="pair-error" role="alert" hidden></p>
+        <p class="note">The check code proves the address is your computer: the app trusts its certificate only when they match, and nothing is sent before that. Only home-network addresses are used.</p>
+      </details>
+
+      <details class="card" id="owner">
+        <summary>Your own laptop over Tailscale</summary>
+        <p>For Forge's owner: the laptop's private address (the one ending in .ts.net). You sign in with the laptop's password and authenticator code; nothing secret is kept here.</p>
+        <form action="/connect" method="get">
+          <input name="host" id="host" placeholder="laptop.your-tailnet.ts.net" autocapitalize="off" autocomplete="off" spellcheck="false" required pattern="[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+\.ts\.net" aria-label="Tailscale address">
+          <button type="submit">Open Forge</button>
+        </form>
+      </details>
     </div>
-    <div id="hub-apps" class="grid"></div>
-  </section>
 
-  <section class="card" id="pair" hidden>
-    <h2>Pair with your computer</h2>
-    <p>On the computer, open Forge, then Devices, Phones. Turn on the phone link and choose Show a pairing code. The phone and the computer must be on the same Wi-Fi.</p>
-    <p class="note">Scan the picture under the code with the phone's camera, or paste the pairing link, or type what Devices shows.</p>
-    <input id="link" placeholder="Paste the pairing link (forge-phone://...)" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Pairing link">
-    <form action="/pair" method="get" id="pair-form">
-      <label>Address <input name="host" id="pair-host" placeholder="192.168.1.20" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" required></label>
-      <label>Check code <input name="check" id="pair-check" placeholder="ABCD-EFGH-JKLM-NPQR" autocapitalize="characters" autocomplete="off" spellcheck="false" required></label>
-      <label>Pairing code <input name="code" id="pair-code" placeholder="K7QM-2XPA" autocapitalize="characters" autocomplete="off" spellcheck="false" required></label>
-      <label>A name for this phone <input name="name" id="pair-name" placeholder="My phone" maxlength="40" autocomplete="off"></label>
-      <button type="submit" id="pair-go">Pair</button>
-    </form>
-    <p class="err" id="pair-error" role="alert" hidden></p>
-    <p class="note">The check code proves the address is your computer: the app trusts its certificate only when they match, and nothing is sent before that. Only home-network addresses are used.</p>
-  </section>
-
-  <details class="card" id="owner">
-    <summary>Your own laptop over Tailscale</summary>
-    <p>For Forge's owner: the laptop's private address (the one ending in .ts.net). You sign in with the laptop's password and authenticator code; nothing secret is kept on the phone.</p>
-    <form action="/connect" method="get">
-      <input name="host" id="host" placeholder="laptop.your-tailnet.ts.net" autocapitalize="off" autocomplete="off" spellcheck="false" required pattern="[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+\.ts\.net" aria-label="Tailscale address">
-      <button type="submit">Open Forge</button>
-    </form>
-  </details>
-
-  <section class="card" id="device" hidden>
-    <h2>This phone</h2>
-    <p id="device-now"></p>
-    <p class="note" id="device-facts"></p>
-  </section>
-  <section id="local" hidden>
-    <h2>On this phone</h2>
-    <p class="note">These run with no computer at all. Their saves stay on the phone.</p>
-    <div id="apps" class="grid"></div>
-  </section>
+    <aside class="side">
+      <section id="local" hidden>
+        <h2>On this <span class="noun">device</span></h2>
+        <p class="note">These run with no computer at all. Their saves stay here.</p>
+        <div id="apps" class="grid"></div>
+      </section>
+      <section class="card" id="device" hidden>
+        <h2>This <span class="noun">device</span></h2>
+        <p id="device-now"></p>
+        <p class="note" id="device-facts"></p>
+      </section>
+      <details class="card" id="petal">
+        <summary>Help with small jobs (Petal)</summary>
+        <p class="note">This <span class="noun">device</span> can take small jobs from your computers through Petal: Claude sessions and a couple of battle bot games at a time. Renders and local AI stay on the computers, which also get any job they have room for.</p>
+        <ol class="steps">
+          <li>Install Termux from F-Droid.</li>
+          <li>On the computer: Petal, Add a computer, Share on this network.</li>
+          <li>In Termux, run:<code id="petal-cmd"></code><button type="button" class="quiet" id="petal-copy">Copy</button></li>
+          <li>In Petal on the computer, press Pair beside this <span class="noun">device</span>, then Accept on Petal's page here.</li>
+        </ol>
+        <a class="button quiet" href="http://127.0.0.1:47323/">Open Petal's page here</a>
+      </details>
+      <section class="card" id="about">
+        <h2>Forge for Android</h2>
+        <p id="about-version">Version ...</p>
+        <p class="note" id="update-line" role="status">Not checked for updates yet.</p>
+        <div class="progress" id="update-bar" hidden><i></i></div>
+        <p class="note" id="update-notes" hidden></p>
+        <div class="row">
+          <button type="button" id="update-go" hidden>Update</button>
+          <button type="button" class="quiet" id="update-check">Check for updates</button>
+        </div>
+        <details class="said" id="update-said" hidden><summary>Where it looked</summary><ul id="said-list"></ul></details>
+        <p class="note">Updates come from your paired computers and Forge's release page. Android asks you to confirm each one; your computers and settings stay.</p>
+      </section>
+    </aside>
+  </div>
 </main>
 <script src="/device.js"></script>
 <script src="/start.js"></script>

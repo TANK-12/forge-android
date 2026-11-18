@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press Forge's icon: the visualiser and the wallpaper and widgets (task 1316) -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+  <shortcut android:shortcutId="visualiser" android:enabled="true"
+      android:icon="@mipmap/viz_icon" android:shortcutShortLabel="@string/short_visualiser">
+    <intent android:action="android.intent.action.VIEW"
+        android:targetPackage="app.forge.phone" android:targetClass="app.forge.visualiser.PlayerActivity" />
+  </shortcut>
+  <shortcut android:shortcutId="theme" android:enabled="true"
+      android:icon="@mipmap/theme_icon" android:shortcutShortLabel="@string/short_theme">
+    <intent android:action="android.intent.action.VIEW"
+        android:targetPackage="app.forge.phone" android:targetClass="app.forge.theme.ThemeActivity" />
+  </shortcut>
+</shortcuts>

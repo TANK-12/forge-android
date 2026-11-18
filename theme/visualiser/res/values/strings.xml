@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="viz_name">Forge Visualiser</string>
+  <string name="viz_wallpaper">Forge visualiser</string>
+  <string name="viz_about_wallpaper">The Forge music visualiser behind your home screen, moving to whatever the tablet plays. Light looks are easy on the battery; Showpiece looks want strong graphics.</string>
+  <string name="viz_widget">Forge visualiser</string>
+  <string name="viz_about_widget">The visualiser look in use, the next look at a tap, music keys, and the full-screen player.</string>
+</resources>

@@ -2,7 +2,12 @@
 # Build the Forge phone APK with no Gradle: aapt2, javac, d8, zipalign,
 # apksigner from ~/.local/share/forge/android (fetch.sh puts them there).
 # The release key lives in ~/.config/forge/android (0600, never in a repo).
-#   phone/android/build.sh            -> phone/android/build/forge.apk
+#   phone/android/build.sh                  -> phone/android/build/forge.apk
+#   phone/android/build.sh --publish NOTES  -> the same, then put where Forge for
+#       Android looks for updates (phone/phone_updates.py publish; task 1316)
+# Forge Theme and Forge Visualiser are folded in (task 1316): their Java,
+# resources and assets come from phone/theme (common, theme, visualiser), the
+# same files phone/theme/build.sh builds the standalone apps from.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TOOLS="${FORGE_ANDROID:-$HOME/.local/share/forge/android}"
@@ -11,6 +16,9 @@ export JAVA_HOME="$TOOLS/jdk" PATH="$TOOLS/jdk/bin:$PATH"
 BT="$TOOLS/sdk/build-tools/34.0.0"
 JAR="$TOOLS/sdk/platforms/android-34/android.jar"
 OUT="$HERE/build"
+THEME="$HERE/../theme"
+PUBLISH=""
+if [ "${1:-}" = --publish ]; then PUBLISH="${2:?--publish needs the notes: what changed, in plain words}"; fi
 mkdir -p "$OUT"
 STAGE="$(mktemp -d "$OUT/stage.XXXX")"
 trap 'rm -rf "${STAGE:?}"' EXIT
@@ -19,6 +27,10 @@ trap 'rm -rf "${STAGE:?}"' EXIT
 "$HERE/../.venv/bin/python" "$HERE/../build_offline.py"
 mkdir -p "$STAGE/assets"
 cp -r "$HERE/assets/start" "$STAGE/assets/start"
+# the visualiser's looks, the theme pictures and particle kinds (from Forge's
+# registries), and the visualiser's own page (host/)
+"$HERE/../.venv/bin/python" "$THEME/make_assets.py" "$STAGE/assets"
+cp -r "$THEME/visualiser/assets/." "$STAGE/assets/"
 # device strength rules and code (shared/perf/device.json, Relay task 596)
 cp "$HERE/../../shared/forge_device.js" "$STAGE/assets/start/device.js"
 cp "$HERE/../../shared/perf/device.json" "$STAGE/assets/start/device.json"
@@ -51,12 +63,19 @@ for meta in sorted(offline.glob("*/forge_phone.json")):
 print("bundled:", ", ".join(a["name"] for a in apps))
 PY
 
+# shared drawables (the dark panel, music keys), Forge Theme's and the
+# visualiser's own resources, then this app's; each name is used once
+for part in common/res theme/res visualiser/res; do
+  "$BT/aapt2" compile --dir "$THEME/$part" -o "$STAGE/${part%%/*}.zip"
+done
 "$BT/aapt2" compile --dir "$HERE/res" -o "$STAGE/res.zip"
 "$BT/aapt2" link -o "$STAGE/base.apk" -I "$JAR" --manifest "$HERE/AndroidManifest.xml" \
-  -A "$STAGE/assets" "$STAGE/res.zip" --java "$STAGE/gen" --auto-add-overlay
+  -A "$STAGE/assets" "$STAGE/common.zip" "$STAGE/theme.zip" "$STAGE/visualiser.zip" "$STAGE/res.zip" \
+  --java "$STAGE/gen" --extra-packages app.forge.theme:app.forge.visualiser \
+  --auto-add-overlay -0 png -0 jpg
 mkdir -p "$STAGE/classes"
 javac --release 17 -classpath "$JAR" -d "$STAGE/classes" \
-  $(find "$HERE/src" "$STAGE/gen" -name '*.java')
+  $(find "$HERE/src" "$THEME/common/src" "$THEME/theme/src" "$THEME/visualiser/src" "$STAGE/gen" -name '*.java')
 "$BT/d8" --release --min-api 26 --lib "$JAR" --output "$STAGE" $(find "$STAGE/classes" -name '*.class')
 python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1], "a").write(sys.argv[2], "classes.dex")' \
   "$STAGE/base.apk" "$STAGE/classes.dex"
@@ -74,3 +93,6 @@ fi
   --ks-pass "file:$KEYS/password" --out "$OUT/forge.apk" "$STAGE/aligned.apk"
 "$BT/apksigner" verify "$OUT/forge.apk"
 ls -l "$OUT/forge.apk"
+if [ -n "$PUBLISH" ]; then
+  "$HERE/../.venv/bin/python" "$HERE/../phone_updates.py" publish "$OUT/forge.apk" --notes "$PUBLISH"
+fi

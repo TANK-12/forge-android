@@ -1,0 +1,102 @@
+<!doctype html>
+<!-- Forge Visualiser's page (Relay task 1293): the shared Forge visualiser
+     looks full screen (?mode=player) or as the live wallpaper
+     (?mode=wallpaper, no controls). Served from the APK by Host.java. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Forge Visualiser</title>
+<link rel="stylesheet" href="host.css">
+<script src="/visualiser/viz_core.js"></script>
+</head>
+<body>
+<div id="stage"></div>
+<div id="ui" hidden>
+  <header class="bar top">
+    <div class="now">
+      <b id="name">Forge Visualiser</b>
+      <span id="weight" class="tag"></span>
+    </div>
+    <div class="row">
+      <button id="looksBtn" class="pill">Looks</button>
+      <button id="setBtn" class="pill">Settings</button>
+      <button id="closeBtn" class="icon" aria-label="Close">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <p id="note" class="note" hidden></p>
+
+  <footer class="bar bottom">
+    <div class="row">
+      <button id="prevLook" class="icon" aria-label="Previous look">
+        <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <button id="nextLook" class="icon" aria-label="Next look">
+        <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+    <div class="row status">
+      <span id="status"></span>
+      <button id="allow" class="pill accent" hidden>Allow listening</button>
+    </div>
+    <div class="row">
+      <button class="icon" data-key="prev" aria-label="Previous song">
+        <svg viewBox="0 0 24 24"><path d="M6 5v14M18 5l-9 7 9 7z" class="fill"/></svg>
+      </button>
+      <button class="icon" data-key="play" aria-label="Play or pause">
+        <svg viewBox="0 0 24 24"><path d="M5 5l8 7-8 7zM15 5v14M19 5v14" class="fill"/></svg>
+      </button>
+      <button class="icon" data-key="next" aria-label="Next song">
+        <svg viewBox="0 0 24 24"><path d="M18 5v14M6 5l9 7-9 7z" class="fill"/></svg>
+      </button>
+    </div>
+  </footer>
+
+  <section id="looks" class="sheet" hidden>
+    <h2>Looks</h2>
+    <div id="lookList"></div>
+  </section>
+
+  <section id="settings" class="sheet" hidden>
+    <h2>Settings</h2>
+    <h3>Listen to</h3>
+    <div class="chips" data-pref="source">
+      <button data-v="phone">This device's sound</button>
+      <button data-v="mic">Microphone</button>
+      <button data-v="demo">Demo beat</button>
+      <button data-v="off">Nothing</button>
+    </div>
+    <p class="hint">This device's sound needs the microphone permission; Android asks it for any app that listens to what is playing. Nothing is recorded or sent anywhere.</p>
+    <h3>Full screen</h3>
+    <div class="chips" data-pref="fps">
+      <button data-v="30">30 frames a second</button>
+      <button data-v="60">60</button>
+    </div>
+    <div class="chips" data-pref="scale">
+      <button data-v="0.5">Saver</button>
+      <button data-v="0.75">Balanced</button>
+      <button data-v="1">Sharp</button>
+    </div>
+    <h3>Wallpaper</h3>
+    <button id="wallBtn" class="pill accent">Use this look as wallpaper</button>
+    <p class="hint" id="wallNow"></p>
+    <div class="chips" data-pref="wallFps">
+      <button data-v="15">15 frames a second</button>
+      <button data-v="30">30</button>
+      <button data-v="60">60</button>
+    </div>
+    <div class="chips" data-pref="wallScale">
+      <button data-v="0.5">Saver</button>
+      <button data-v="0.75">Balanced</button>
+      <button data-v="1">Sharp</button>
+    </div>
+    <p class="hint">The wallpaper only moves while you can see it. Battery Saver drops it to 15 frames a second, and under 15% battery it holds a still picture.</p>
+    <p class="hint" id="why"></p>
+  </section>
+</div>
+<script src="host.js"></script>
+</body>
+</html>

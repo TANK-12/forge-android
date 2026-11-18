@@ -1,2 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources><string name="name">Forge</string></resources>
+<resources>
+  <string name="name">Forge</string>
+  <string name="send">Send to a computer</string>
+  <string name="jobs">Forge jobs</string>
+  <string name="about_jobs">What your paired computer is working on: Relay tasks running and waiting, the last finished one, and a render or long job with its progress.</string>
+  <string name="short_visualiser">Visualiser</string>
+  <string name="short_theme">Wallpaper</string>
+  <string name="theme_in_forge">Wallpaper and widgets</string>
+</resources>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:padding="4dp">
+  <ImageView android:id="@+id/bg" android:layout_width="match_parent"
+      android:layout_height="match_parent" android:src="@drawable/panel" android:scaleType="fitXY"
+      android:contentDescription="@null" />
+  <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+      android:orientation="horizontal" android:gravity="center" android:paddingStart="10dp"
+      android:paddingEnd="10dp">
+    <ImageButton android:id="@+id/prev" android:layout_width="0dp" android:layout_height="48dp"
+        android:layout_weight="1" android:src="@drawable/ic_prev" android:background="@null"
+        android:contentDescription="Previous" />
+    <ImageButton android:id="@+id/play" android:layout_width="0dp" android:layout_height="48dp"
+        android:layout_weight="1" android:src="@drawable/ic_play_pause" android:background="@null"
+        android:contentDescription="Play or pause" />
+    <ImageButton android:id="@+id/next" android:layout_width="0dp" android:layout_height="48dp"
+        android:layout_weight="1" android:src="@drawable/ic_next" android:background="@null"
+        android:contentDescription="Next" />
+    <ImageButton android:id="@+id/kind" android:layout_width="0dp" android:layout_height="48dp"
+        android:layout_weight="1" android:src="@drawable/ic_sparkle" android:background="@null"
+        android:contentDescription="Next particles" />
+    <ImageButton android:id="@+id/vis" android:layout_width="0dp" android:layout_height="48dp"
+        android:layout_weight="1" android:src="@drawable/ic_visualiser" android:background="@null"
+        android:contentDescription="Open Forge Visualiser" />
+  </LinearLayout>
+</FrameLayout>

@@ -13,9 +13,13 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.net.ssl.HttpsURLConnection;
@@ -335,6 +339,17 @@ public final class Link {
     return false;
   }
 
+  /** The other side hung up during the handshake (Java's and Android's words for it). */
+  static boolean closedEarly(Throwable e) {
+    for (Throwable t = e; t != null; t = t.getCause()) {
+      if (t instanceof java.io.EOFException || t instanceof java.net.SocketException) return true;
+      String m = t.getMessage() == null ? "" : t.getMessage().toLowerCase(Locale.ROOT);
+      if (m.contains("closed by peer") || m.contains("terminated the handshake")
+          || m.contains("connection reset")) return true;
+    }
+    return false;
+  }
+
   /** One request to the hub over the pinned certificate (no redirects, no cache). */
   public static Reply request(String method, String host, String fingerprint, String path,
       String cookie, String csrf, String json) throws Failure {
@@ -363,6 +378,9 @@ public final class Link {
       }
       return new Reply(status, body, cookies);
     } catch (javax.net.ssl.SSLException e) {
+      // cut off before any certificate (Forge closed behind a forwarder, another
+      // program on the port): nothing there to talk to, said as such
+      if (!wrongCertificate(e) && closedEarly(e)) throw new Failure(unreachable());
       if (!wrongCertificate(e)) {
         throw new Failure("The secure connection to the computer at " + host + " failed. Try again.");
       }
@@ -422,6 +440,109 @@ public final class Link {
     String token = r.cookie(COOKIE);
     if (r.status != 200 || token.isEmpty()) throw new Failure(said(r));
     return new Paired(host, fp, token);
+  }
+
+  /**
+   * Send one file to the computer's inbox (phone/hub.py /hub/api/inbox; the
+   * computer's owner allows it per device in Devices, Phones). The body
+   * streams from in; length is -1 when unknown. Returns the hub's reply.
+   */
+  public static Reply upload(String host, String fingerprint, String token, String name,
+      InputStream in, long length) throws Failure {
+    Reply boot = get(host, fingerprint, "/hub/api/bootstrap", token);
+    String csrf = field(boot.body, "csrf");
+    if (boot.status == 401 || (boot.status == 200 && csrf == null)) {
+      throw new Failure("The computer at " + host + " no longer knows this device. Pair it again on the start page.");
+    }
+    if (boot.status != 200 || csrf == null) throw new Failure(said(boot));
+    HttpsURLConnection c = null;
+    try {
+      c = open(origin(host) + "/hub/api/inbox?name=" + java.net.URLEncoder.encode(name, "UTF-8"), fingerprint);
+      c.setReadTimeout(120_000);
+      c.setRequestMethod("POST");
+      c.setRequestProperty("Accept", "application/json");
+      c.setRequestProperty("Cookie", COOKIE + "=" + token);
+      c.setRequestProperty("Origin", origin(host));
+      c.setRequestProperty("Content-Type", "application/octet-stream");
+      c.setRequestProperty("X-CSRF-Token", csrf);
+      c.setDoOutput(true);
+      if (length >= 0) c.setFixedLengthStreamingMode(length);
+      else c.setChunkedStreamingMode(65536);
+      long count = 0;
+      try (OutputStream out = c.getOutputStream()) {
+        byte[] buf = new byte[65536];
+        for (int n; (n = in.read(buf)) > 0; ) {
+          count += n;
+          // the sharing app's size was wrong, or the file changed while sending
+          if (length >= 0 && count > length) throw new Failure(name + " changed while it was being sent. Share it again.");
+          out.write(buf, 0, n);
+        }
+        if (length >= 0 && count != length) throw new Failure(name + " changed while it was being sent. Share it again.");
+      } catch (IOException e) {
+        // the computer may have refused it part way (too large, no room, not allowed): say its words
+        int refused = -1;
+        try {
+          refused = c.getResponseCode();
+        } catch (IOException again) {
+          // no answer at all
+        }
+        if (refused < 400) throw e;
+        InputStream back = c.getErrorStream();
+        return new Reply(refused, back == null ? "" : read(back), new ArrayList<>());
+      }
+      int status = c.getResponseCode();
+      InputStream back = status >= 400 ? c.getErrorStream() : c.getInputStream();
+      return new Reply(status, back == null ? "" : read(back), new ArrayList<>());
+    } catch (javax.net.ssl.SSLException e) {
+      throw new Failure(wrongCertificate(e)
+          ? "The computer at " + host + " answered with another certificate than the one this device paired with."
+          : "The secure connection to the computer at " + host + " failed. Try again.");
+    } catch (IOException e) {
+      throw new Failure("The file could not reach the computer at " + host + ". Check the Wi-Fi and try again.");
+    } finally {
+      if (c != null) c.disconnect();
+    }
+  }
+
+  /**
+   * Home-network addresses near own (this device's IPv4 on the Wi-Fi, its
+   * /24) where something takes a connection on the phone link's port. Only
+   * a TCP connect: nothing is sent, so a stranger's device learns nothing.
+   * The check code still proves which computer an address is.
+   */
+  public static List<String> scan(byte[] own, int waitMs) {
+    return scan(own, waitMs, javax.net.SocketFactory.getDefault());
+  }
+
+  /** scan() with the sockets made by `factory` (on Android, the Wi-Fi network's). */
+  public static List<String> scan(byte[] own, int waitMs, javax.net.SocketFactory factory) {
+    List<String> found = java.util.Collections.synchronizedList(new ArrayList<>());
+    if (own == null || own.length != 4) return found;
+    String mine = written(own);
+    ExecutorService pool = Executors.newFixedThreadPool(48);
+    for (int i = 1; i < 255; i++) {
+      final byte[] b = {own[0], own[1], own[2], (byte) i};
+      final String at = written(b);
+      if (at.equals(mine) || homeAddress(at) == null) continue;
+      pool.execute(() -> {
+        try (java.net.Socket s = factory.createSocket()) {
+          s.connect(new InetSocketAddress(InetAddress.getByAddress(b), HUB_PORT), waitMs);
+          found.add(at);
+        } catch (IOException e) {
+          // nothing there
+        }
+      });
+    }
+    pool.shutdown();
+    try {
+      pool.awaitTermination(waitMs * 8L + 2000, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    pool.shutdownNow();
+    List<String> out = new ArrayList<>(found);
+    out.sort((x, y) -> Integer.compare(bytesOf(x)[3] & 0xff, bytesOf(y)[3] & 0xff));
+    return out;
   }
 
   /** GET a hub path as the paired phone. */
@@ -487,6 +608,8 @@ public final class Link {
    *   get HOST FINGERPRINT TOKEN PATH   prints the status and body
    *   signout HOST FINGERPRINT TOKEN
    *   address TEXT   prints the accepted address or "refused"
+   *   scan OWN_IPV4   prints the addresses near it that take a phone-link connection
+   *   upload HOST FINGERPRINT TOKEN NAME FILE   prints the inbox's status and body
    */
   public static void main(String[] args) {
     try {
@@ -501,6 +624,19 @@ public final class Link {
           break;
         case "signout":
           signOut(args[1], args[2], args[3]);
+          break;
+        case "scan":
+          for (String at : scan(bytesOf(args[1]), 300)) System.out.println(at);
+          break;
+        case "upload":
+          java.io.File f = new java.io.File(args[5]);
+          try (InputStream in = new java.io.FileInputStream(f)) {
+            Reply u = upload(args[1], args[2], args[3], args[4], in, f.length());
+            System.out.println(u.status + "\n" + u.body);
+          } catch (IOException e) {
+            System.out.println("failure: " + e.getMessage());
+            System.exit(2);
+          }
           break;
         case "address":
           String a = homeAddress(args[1]);

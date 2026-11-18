@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:padding="4dp">
+  <ViewFlipper android:id="@+id/frames" android:layout_width="match_parent"
+      android:layout_height="match_parent" android:autoStart="true" android:flipInterval="240"
+      android:inAnimation="@anim/frame_in" android:outAnimation="@anim/frame_out" />
+</FrameLayout>

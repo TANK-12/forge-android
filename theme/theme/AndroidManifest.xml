@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="app.forge.theme" android:versionCode="1" android:versionName="0.1">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
+  <!-- only to hear music for the particles; asked for when switched on -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+  <uses-feature android:name="android.software.live_wallpaper" android:required="true" />
+  <uses-feature android:name="android.hardware.microphone" android:required="false" />
+  <queries>
+    <package android:name="app.forge.visualiser" />
+  </queries>
+  <application android:label="@string/theme_name" android:icon="@mipmap/theme_icon"
+      android:allowBackup="false" android:theme="@android:style/Theme.Material.NoActionBar">
+    <activity android:name=".ThemeActivity" android:exported="true"
+        android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+    <service android:name=".ThemeWallpaper" android:exported="true" android:label="@string/theme_wallpaper"
+        android:permission="android.permission.BIND_WALLPAPER">
+      <intent-filter>
+        <action android:name="android.service.wallpaper.WallpaperService" />
+      </intent-filter>
+      <meta-data android:name="android.service.wallpaper" android:resource="@xml/theme_wallpaper" />
+    </service>
+    <receiver android:name=".Widgets$ClockWidget" android:exported="false" android:label="@string/clock">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_clock" />
+    </receiver>
+    <receiver android:name=".Widgets$ParticlesWidget" android:exported="false"
+        android:label="@string/particles_widget">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_particles" />
+    </receiver>
+    <receiver android:name=".Widgets$MusicWidget" android:exported="false" android:label="@string/music">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_music" />
+    </receiver>
+    <!-- the particles widget's frames, for the home screen to read -->
+    <provider android:name=".FramesProvider" android:authorities="app.forge.theme.frames"
+        android:exported="true" />
+  </application>
+</manifest>

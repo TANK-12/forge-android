@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:padding="2dp">
+  <ImageView android:id="@+id/bg" android:layout_width="match_parent"
+      android:layout_height="match_parent" android:src="@drawable/panel" android:scaleType="fitXY"
+      android:tint="#e60b0f17" android:contentDescription="@null" />
+  <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+      android:orientation="vertical" android:gravity="center_vertical" android:paddingStart="12dp"
+      android:paddingEnd="12dp" android:paddingTop="8dp" android:paddingBottom="6dp">
+    <LinearLayout android:id="@+id/open" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:orientation="horizontal"
+        android:gravity="center_vertical">
+      <ImageView android:layout_width="30dp" android:layout_height="30dp"
+          android:src="@drawable/ic_bars" android:contentDescription="@null" />
+      <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+          android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="12dp">
+        <TextView android:id="@+id/name" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="@string/viz_name" android:textSize="16sp"
+            android:textColor="#ffffffff" android:singleLine="true" android:ellipsize="end"
+            android:fontFamily="sans-serif-medium" />
+        <TextView android:id="@+id/info" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textSize="12sp" android:textColor="#b3d6e8ff"
+            android:singleLine="true" android:ellipsize="end" />
+      </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="40dp"
+        android:layout_marginTop="2dp" android:orientation="horizontal" android:gravity="center">
+      <ImageButton android:id="@+id/prev" android:layout_width="0dp" android:layout_height="40dp"
+          android:layout_weight="1" android:src="@drawable/ic_prev" android:background="@null"
+          android:contentDescription="Previous song" />
+      <ImageButton android:id="@+id/play" android:layout_width="0dp" android:layout_height="40dp"
+          android:layout_weight="1" android:src="@drawable/ic_play_pause" android:background="@null"
+          android:contentDescription="Play or pause" />
+      <ImageButton android:id="@+id/next" android:layout_width="0dp" android:layout_height="40dp"
+          android:layout_weight="1" android:src="@drawable/ic_next" android:background="@null"
+          android:contentDescription="Next song" />
+      <ImageButton android:id="@+id/look" android:layout_width="0dp" android:layout_height="40dp"
+          android:layout_weight="1" android:src="@drawable/ic_look" android:background="@null"
+          android:contentDescription="Next look" />
+      <ImageButton android:id="@+id/full" android:layout_width="0dp" android:layout_height="40dp"
+          android:layout_weight="1" android:src="@drawable/ic_full" android:background="@null"
+          android:contentDescription="Full screen" />
+    </LinearLayout>
+  </LinearLayout>
+</FrameLayout>

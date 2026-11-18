@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="app.forge.visualiser" android:versionCode="2" android:versionName="0.2">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
+  <!-- to hear the music: the phone's own sound (Visualizer) or the microphone;
+       asked for the first time a sound source is picked -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+  <uses-feature android:name="android.software.live_wallpaper" android:required="false" />
+  <uses-feature android:name="android.hardware.microphone" android:required="false" />
+  <application android:label="@string/viz_name" android:icon="@mipmap/viz_icon"
+      android:allowBackup="false" android:hardwareAccelerated="true"
+      android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen">
+    <activity android:name=".PlayerActivity" android:exported="true"
+        android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+    <service android:name=".VizWallpaper" android:exported="true" android:label="@string/viz_wallpaper"
+        android:permission="android.permission.BIND_WALLPAPER">
+      <intent-filter>
+        <action android:name="android.service.wallpaper.WallpaperService" />
+      </intent-filter>
+      <meta-data android:name="android.service.wallpaper" android:resource="@xml/viz_wallpaper" />
+    </service>
+    <receiver android:name=".VizWidget" android:exported="false" android:label="@string/viz_widget">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_visualiser" />
+    </receiver>
+  </application>
+</manifest>

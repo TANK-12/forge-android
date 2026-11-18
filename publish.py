@@ -1,6 +1,9 @@
-"""Put the phone APK on GitHub: the source (this folder, without build/),
-termux/ (lend.sh plus the link files it fetches) and a release with
-build/forge.apk. Run build.sh first.
+"""Put the phone APK on GitHub: the source (this folder, without build/,
+plus theme/: Forge Theme and the visualiser, folded into the app since task
+1316), termux/ (lend.sh plus the link files it fetches) and a release with
+build/forge.apk and forge-android.json, the description Forge for Android's
+"Check for updates" reads from the latest release (phone_updates.site_meta).
+Run build.sh first.
 
     phone/.venv/bin/python phone/android/publish.py v0.1 "release notes"
 
@@ -12,6 +15,7 @@ laptop's host name or the hub's saved address.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import socket
@@ -25,6 +29,7 @@ PHONE = HERE.parent
 FORGE = PHONE.parent
 sys.path.insert(0, str(PHONE))
 import build_offline  # noqa: E402
+import phone_updates  # noqa: E402
 
 REPO = "TANK-12/forge-android"
 ABOUT = "Forge for Android: a phone app that pairs with Forge on your computer over home Wi-Fi"
@@ -33,9 +38,9 @@ PRIVATE = build_offline.PRIVATE[1:] + [re.compile(r"tail[0-9a-f]{6}\.ts\.net", r
 
 
 def stage(into: Path) -> None:
-    shutil.copytree(
-        HERE, into, ignore=shutil.ignore_patterns("build", "__pycache__", ".*")
-    )
+    skip = shutil.ignore_patterns("build", "__pycache__", ".*")
+    shutil.copytree(HERE, into, ignore=skip)
+    shutil.copytree(PHONE / "theme", into / "theme", ignore=skip)
     (into / "termux").mkdir()
     shutil.copy2(PHONE / "termux" / "lend.sh", into / "termux" / "lend.sh")
     for name in LINK_FILES:
@@ -72,16 +77,23 @@ def main() -> int:
     apk = HERE / "build" / "forge.apk"
     if not apk.is_file():
         raise SystemExit("No build/forge.apk: run build.sh first")
+    try:
+        meta = phone_updates.site_meta(phone_updates.describe(apk, a.notes), a.tag)
+    except phone_updates.PublishError as e:
+        raise SystemExit(str(e)) from e
     with tempfile.TemporaryDirectory(prefix="forge-android-") as tmp:
         work = Path(tmp) / "repo"
         stage(work)
+        about = Path(tmp) / phone_updates.META
+        about.write_text(json.dumps(meta, indent=1), encoding="utf-8")
         hits = private_hits(work)
         if hits:
             raise SystemExit("Private text, nothing published:\n  " + "\n  ".join(hits))
         print(
             "staged",
             sum(1 for p in work.rglob("*") if p.is_file()),
-            "files, scan clean",
+            "files, scan clean;",
+            f"{meta['version_name']} ({meta['version_code']}) {meta['sha256'][:12]}",
         )
         if a.dry_run:
             return 0
@@ -107,6 +119,7 @@ def main() -> int:
                 "create",
                 a.tag,
                 str(apk),
+                str(about),
                 "-R",
                 REPO,
                 "--title",
@@ -115,7 +128,17 @@ def main() -> int:
                 a.notes,
             )
         else:
-            run("gh", "release", "upload", a.tag, str(apk), "-R", REPO, "--clobber")
+            run(
+                "gh",
+                "release",
+                "upload",
+                a.tag,
+                str(apk),
+                str(about),
+                "-R",
+                REPO,
+                "--clobber",
+            )
     print(f"https://github.com/{REPO}/releases/download/{a.tag}/forge.apk")
     return 0
 
