@@ -139,6 +139,9 @@ def main() -> int:
                 REPO,
                 "--clobber",
             )
+        # A run stopped mid-upload leaves gh's release as a draft, which phones
+        # never see as the latest one.
+        run("gh", "release", "edit", a.tag, "-R", REPO, "--draft=false", "--latest")
     print(f"https://github.com/{REPO}/releases/download/{a.tag}/forge.apk")
     return 0
 
