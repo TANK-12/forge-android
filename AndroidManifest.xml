@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="app.forge.phone" android:versionCode="14" android:versionName="0.14">
+    package="app.forge.phone" android:versionCode="15" android:versionName="0.15">
   <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
   <uses-permission android:name="android.permission.INTERNET" />
   <!-- this device's own Wi-Fi address, to find computers on the same network -->
