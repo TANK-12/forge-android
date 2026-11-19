@@ -31,6 +31,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.SslErrorHandler;
 import android.webkit.URLUtil;
 import android.webkit.CookieManager;
@@ -44,6 +45,7 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.widget.Toast;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -98,6 +100,7 @@ public class Main extends Activity {
   static final String START = "start" + LOCAL;
   static final int HUB_PORT = 9464;
   static final int DARK = Color.rgb(11, 13, 18);
+  boolean pageGone;
   WebView web;
   LinearLayout bar;
   TextView barTitle;
@@ -145,8 +148,11 @@ public class Main extends Activity {
     }
     String jobs = jobsPage(getIntent());
     if (jobs != null) web.loadUrl(jobs);
-    else if (saved != null) web.restoreState(saved);
-    else web.loadUrl(startUrl(getIntent()));
+    else if (saved != null && !saved.getBoolean("forge_page_gone")) web.restoreState(saved);
+    else web.loadUrl(startUrl(saved != null ? null : getIntent()));
+    if (saved != null && saved.getBoolean("forge_page_gone")) {
+      Toast.makeText(this, "That page stopped on the tablet (often too little memory), so Forge started again.", Toast.LENGTH_LONG).show();
+    }
   }
 
   @Override
@@ -645,7 +651,10 @@ public class Main extends Activity {
   @Override
   protected void onSaveInstanceState(Bundle out) {
     super.onSaveInstanceState(out);
-    web.saveState(out);
+    // after a page crash the WebView is destroyed and holds nothing to save:
+    // the new window opens the start page (not the app that just crashed)
+    if (pageGone) out.putBoolean("forge_page_gone", true);
+    else web.saveState(out);
   }
 
   @Override
@@ -1168,6 +1177,19 @@ public class Main extends Activity {
       + " e.preventDefault(); location.href = a.href; }))";
 
   class Client extends WebViewClient {
+    /** A page that runs out of memory (a very big PDF on the tablet) takes WebView's page
+     * process with it; Forge starts its window again instead of closing. */
+    @Override
+    public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+      if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
+      view.destroy();
+      if (view == web) {
+        pageGone = true;
+        recreate();
+      }
+      return true;
+    }
+
     @Override
     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
       Uri uri = request.getUrl();
@@ -1295,6 +1317,9 @@ public class Main extends Activity {
       if (path.startsWith("/api/")) return reply(503, "application/json", "{\"error\":\"offline\"}");
       if (path.endsWith("/")) path += "index.html";
       String base = app.equals("start") ? "start" : "offline/" + app + "/www";
+      // bundles several offline apps load (Pyodide, pdf.js) are kept once in the APK,
+      // under shared/, for the apps whose registry entry names them (build.sh, task 1340)
+      if (!app.equals("start") && sharedMount(app, path)) base = "shared";
       // the theme pictures (Forge Theme's walls) behind the home page's top, and the
       // visualiser's list of looks for its tile; themes and looks for Wallpapers
       if (app.equals("start") && (path.matches("/walls/[a-z0-9._-]+\\.(jpg|png|webp)")
@@ -1339,6 +1364,17 @@ public class Main extends Activity {
     }
     headerCache.put(app, got);
     return got;
+  }
+
+  /** The path is under one of the app's shared mounts (forge-offline-native.json "shared"). */
+  boolean sharedMount(String app, String path) {
+    JSONArray mounts = nativeOptions(app).optJSONArray("shared");
+    if (mounts == null) return false;
+    for (int i = 0; i < mounts.length(); i++) {
+      String mount = mounts.optString(i, "");
+      if (mount.matches("/[a-z0-9_-]+") && path.startsWith(mount + "/")) return true;
+    }
+    return false;
   }
 
   final Map<String, JSONObject> nativeCache = new HashMap<>();

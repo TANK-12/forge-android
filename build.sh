@@ -61,7 +61,19 @@ for meta in sorted(offline.glob("*/forge_phone.json")):
         continue
     if name in hidden and entry.get("offline_public") is not True:
         continue
-    shutil.copytree(meta.parent / "www", assets / "offline" / name / "www")
+    www = assets / "offline" / name / "www"
+    shutil.copytree(meta.parent / "www", www)
+    # bundles more than one app loads (Pyodide, pdf.js) go once into shared/,
+    # where Main.java serves them for the apps that name them (task 1340)
+    native = www / "forge-offline-native.json"
+    for mount in json.loads(native.read_text()).get("shared", []) if native.is_file() else []:
+        for path in sorted(p for p in (www / mount.strip("/")).rglob("*") if p.is_file()):
+            kept = assets / "shared" / path.relative_to(www)
+            if kept.is_file() and kept.read_bytes() != path.read_bytes():
+                raise SystemExit(f"{name}: {path.relative_to(www)} differs from another app's copy")
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            path.replace(kept)
+        shutil.rmtree(www / mount.strip("/"))
     apps.append(json.loads(meta.read_text()) | {"name": name})
 (assets / "start" / "apps.json").write_text(json.dumps(apps))
 print("bundled:", ", ".join(a["name"] for a in apps))
