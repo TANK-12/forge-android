@@ -17,7 +17,14 @@ A small Android app for Forge, the desktop tool hub. One WebView:
   laptop's Tailscale name ending in `.ts.net`, then sign in with its
   password and authenticator code.
 - **On this phone**: Forge apps bundled in the APK that run with no computer
-  at all (Focus). Their saves stay on the phone.
+  at all: Focus, Mind test and the local AI, plus MIDI Studio, Loops, Reps,
+  Devotion, Bible, Prompts, Notes, Recall, Tokens and Line prints in 0.10.
+  Their saves stay on the phone, separately from the computer. Local AI
+  needs its model downloaded once; the other listed tools are bundled.
+  Exported files offer a Download link, then Android asks where to save.
+  MIDI uses the built-in synths; MIDI-file import/export, sampled instruments
+  and Song to MIDI need the computer. Recall supports local pictures/sounds
+  and CSV export; file imports and Anki packages need the computer.
 - **Forge jobs widget** (0.5): a home-screen widget showing what a paired
   computer is working on: Relay tasks running, waiting and needing you, the
   last finished one, and a render or long job with its measured progress and

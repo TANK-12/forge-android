@@ -1172,6 +1172,10 @@ public class Main extends Activity {
     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
       Uri uri = request.getUrl();
       String path = uri.getPath() == null ? "" : uri.getPath();
+      if ("/forge-download".equals(path) && uri.getHost() != null && uri.getHost().endsWith(LOCAL)) {
+        if (request.isForMainFrame() && sameOfflinePage(view, uri)) pickOfflineExport(uri);
+        return true;
+      }
       if (START.equals(uri.getHost())
           && path.matches("/(visualiser|theme|update-check|update-install|wall-live|wall-still|widget-add)")) {
         // the visualiser, wallpapers and widgets, and updates: from the start page only
@@ -1462,6 +1466,78 @@ public class Main extends Activity {
       picking.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result, data));
       picking = null;
     }
+    if (code == 8 && exportId != null) {
+      if (result == RESULT_OK && data != null && data.getData() != null
+          && exportPage.equals(web.getUrl())) {
+        try {
+          java.io.OutputStream output = getContentResolver().openOutputStream(data.getData(), "w");
+          if (output == null) throw new java.io.IOException("No output stream");
+          copyOfflineExport(output, exportId, exportPage, exportBytes, 0, 0);
+        } catch (java.io.IOException | RuntimeException e) {
+          Toast.makeText(this, "The file could not be saved. Try Download again.", Toast.LENGTH_LONG).show();
+        }
+      }
+      exportId = null;
+    }
     super.onActivityResult(code, result, data);
+  }
+
+  String exportId, exportPage;
+  long exportBytes;
+
+  boolean sameOfflinePage(WebView view, Uri destination) {
+    Uri source = Uri.parse(view.getUrl() == null ? "" : view.getUrl());
+    return "https".equals(source.getScheme()) && "https".equals(destination.getScheme())
+        && destination.getHost().equals(source.getHost()) && !START.equals(source.getHost());
+  }
+
+  /** The local page owns the bytes. Android's picker owns the destination, so
+   * an offline app never receives permission to read arbitrary phone files. */
+  void pickOfflineExport(Uri uri) {
+    String id = uri.getQueryParameter("id"), name = uri.getQueryParameter("name");
+    if (id == null || !id.matches("[a-f0-9]{32}") || name == null || name.length() > 160
+        || name.contains("/") || name.contains("\\")) return;
+    String type = uri.getQueryParameter("type");
+    try {
+      exportBytes = Long.parseLong(uri.getQueryParameter("bytes"));
+      if (exportBytes <= 0 || exportBytes > 200L * 1024 * 1024) return;
+    } catch (NumberFormatException e) { return; }
+    Intent pick = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+        .setType(type != null && type.matches("[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+") ? type : "application/octet-stream")
+        .putExtra(Intent.EXTRA_TITLE, name);
+    exportId = id;
+    exportPage = web.getUrl();
+    try {
+      startActivityForResult(pick, 8);
+    } catch (ActivityNotFoundException e) {
+      exportId = null;
+      Toast.makeText(this, "This tablet has no file picker to save the export", Toast.LENGTH_LONG).show();
+    }
+  }
+
+  void copyOfflineExport(java.io.OutputStream output, String id, String page, long expected, int chunk, long bytes) {
+    if (!page.equals(web.getUrl())) {
+      try { output.close(); } catch (java.io.IOException ignored) { }
+      return;
+    }
+    String expression = "window.ForgeOffline ? ForgeOffline.exportChunk(" + JSONObject.quote(id) + "," + chunk + ") : null";
+    web.evaluateJavascript(expression, value -> {
+      try {
+        if (value == null || "null".equals(value)) {
+          if (bytes != expected) throw new java.io.IOException("Export incomplete");
+          output.close();
+          Toast.makeText(this, "File saved", Toast.LENGTH_LONG).show();
+          return;
+        }
+        String encoded = new JSONArray("[" + value + "]").getString(0);
+        byte[] part = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT);
+        if (part.length > 49152 || bytes + part.length > expected) throw new java.io.IOException("Export too big");
+        output.write(part);
+        web.post(() -> copyOfflineExport(output, id, page, expected, chunk + 1, bytes + part.length));
+      } catch (java.io.IOException | JSONException | IllegalArgumentException e) {
+        try { output.close(); } catch (java.io.IOException ignored) { }
+        Toast.makeText(this, "The file could not be saved. Try Download again.", Toast.LENGTH_LONG).show();
+      }
+    });
   }
 }

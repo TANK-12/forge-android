@@ -57,7 +57,9 @@ apps = []
 for meta in sorted(offline.glob("*/forge_phone.json")):
     name = meta.parent.name
     entry = registry.get(name, {})
-    if not entry.get("offline") or entry.get("paired") is not True or name in hidden:
+    if not entry.get("offline") or entry.get("paired") is not True:
+        continue
+    if name in hidden and entry.get("offline_public") is not True:
         continue
     shutil.copytree(meta.parent / "www", assets / "offline" / name / "www")
     apps.append(json.loads(meta.read_text()) | {"name": name})
