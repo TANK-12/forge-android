@@ -1291,6 +1291,7 @@ public class Main extends Activity {
       if (app.equals("start") && path.equals("/update.json")) return updateJson();
       if (app.equals("start") && path.equals("/look.json")) return lookJson();
       if (app.equals("start") && path.equals("/walls.json")) return wallsJson();
+      if (path.equals("/forge-public-fetch") && !app.equals("start")) return publicFetch(app, uri, request);
       if (path.startsWith("/api/")) return reply(503, "application/json", "{\"error\":\"offline\"}");
       if (path.endsWith("/")) path += "index.html";
       String base = app.equals("start") ? "start" : "offline/" + app + "/www";
@@ -1338,6 +1339,76 @@ public class Main extends Activity {
     }
     headerCache.put(app, got);
     return got;
+  }
+
+  final Map<String, JSONObject> nativeCache = new HashMap<>();
+
+  /** What phone features an offline app's registry entry allows (build_offline.py writes
+   * them to www/forge-offline-native.json); empty when it asks for none. */
+  synchronized JSONObject nativeOptions(String app) {
+    JSONObject got = nativeCache.get(app);
+    if (got != null) return got;
+    got = new JSONObject();
+    try (InputStream in = getAssets().open("offline/" + app + "/www/forge-offline-native.json")) {
+      ByteArrayOutputStream buf = new ByteArrayOutputStream();
+      byte[] chunk = new byte[4096];
+      for (int n; (n = in.read(chunk)) > 0; ) buf.write(chunk, 0, n);
+      got = new JSONObject(buf.toString("UTF-8"));
+    } catch (IOException | JSONException e) {
+      // no file: nothing native
+    }
+    nativeCache.put(app, got);
+    return got;
+  }
+
+  /** A public page or picture for an app allowed public_fetch (Shelf saving an article):
+   * the bytes, with the address it landed on and its type in X-Forge-Url and X-Forge-Type. */
+  WebResourceResponse publicFetch(String app, Uri uri, WebResourceRequest request) {
+    JSONObject allowed = nativeOptions(app).optJSONObject("public_fetch");
+    if (allowed == null || !"GET".equals(request.getMethod()))
+      return json(404, "This app cannot fetch web pages");
+    // Only the app's own page may ask: another page's fetch or <img> cannot
+    // send this header without a CORS preflight, which is never answered.
+    Map<String, String> sent = request.getRequestHeaders();
+    String site = null, mark = null;
+    if (sent != null)
+      for (Map.Entry<String, String> e : sent.entrySet()) {
+        if ("x-forge-fetch".equalsIgnoreCase(e.getKey())) mark = e.getValue();
+        if ("sec-fetch-site".equalsIgnoreCase(e.getKey())) site = e.getValue();
+      }
+    if (!"1".equals(mark) || (site != null && !"same-origin".equals(site)))
+      return json(403, "Only this app's own page can fetch web pages");
+    String address = uri.getQueryParameter("url");
+    if (address == null || address.length() > 8000) return json(400, "That is not a web address");
+    double mb = allowed.optDouble("max_mb", 8);
+    try {
+      double asked = Double.parseDouble(uri.getQueryParameter("max_mb"));
+      if (asked > 0 && asked < mb) mb = asked;
+    } catch (NullPointerException | NumberFormatException e) {
+      // the app's own limit
+    }
+    try {
+      PublicFetch.Got got = PublicFetch.fetch(address, (long) (mb * 1024 * 1024));
+      WebResourceResponse r = new WebResourceResponse("application/octet-stream", null,
+          new ByteArrayInputStream(got.body));
+      Map<String, String> h = new HashMap<>();
+      h.put("X-Forge-Url", got.url);
+      h.put("X-Forge-Type", got.type);
+      h.put("Cache-Control", "no-store");
+      h.put("X-Content-Type-Options", "nosniff");
+      r.setResponseHeaders(h);
+      return r;
+    } catch (PublicFetch.Refused e) {
+      return json(e.status, e.getMessage());
+    }
+  }
+
+  static WebResourceResponse json(int code, String detail) {
+    WebResourceResponse r = new WebResourceResponse("application/json", "utf-8",
+        new ByteArrayInputStream(("{\"detail\":" + JSONObject.quote(detail) + "}")
+            .getBytes(StandardCharsets.UTF_8)));
+    r.setStatusCodeAndReasonPhrase(code, code < 400 ? "OK" : "Refused");
+    return r;
   }
 
   static WebResourceResponse reply(int code, String type, String body) {
