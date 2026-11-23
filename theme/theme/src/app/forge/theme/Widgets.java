@@ -274,6 +274,7 @@ final class Widgets {
       int[][] keys = {
         {R.id.prev, KeyEvent.KEYCODE_MEDIA_PREVIOUS},
         {R.id.play, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE},
+        {R.id.pause, KeyEvent.KEYCODE_MEDIA_PAUSE},
         {R.id.next, KeyEvent.KEYCODE_MEDIA_NEXT},
       };
       for (int[] k : keys) {

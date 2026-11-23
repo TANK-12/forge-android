@@ -2,6 +2,12 @@
 
 A small Android app for Forge, the desktop tool hub. One WebView.
 
+**0.18:** a separate Pause button in both music widgets and the visualiser.
+The original play/pause toggle stays for players that support only toggling.
+Pause sends a direct command without guessing whether the player is local or
+casting. The tablet's original button fault has not been reproduced on the
+emulator; physical BPad confirmation remains pending.
+
 **0.17:** Forge's wallpaper, particles and clock across a touch-friendly Home,
 Apps, Wallpaper, Computers and Settings shell. Search all 19 bundled tools
 and pin favourites to Home. Tablet rail, phone dock, and the same saved app
@@ -87,7 +93,7 @@ updates). 0.6 installs over 0.5 by opening its APK the usual way; the
 separate Forge Visualiser and Forge Theme apps are no longer needed (set the
 wallpaper and widgets again from Forge before removing them).
 
-**Status (0.17):** built and checked in headless Chrome and an Android14
+**Status (0.18):** built and checked in headless Chrome and an Android14
 emulator; real tablet firmware/picker compatibility remains unverified.
 Forge Settings → Check for updates installs over the old version with the
 same signing key. Existing user data, pairings and preferences stay.
@@ -105,7 +111,7 @@ For whoever fixes something in the app (a Relay session included):
    `GET /hub/api/phone-app` for signed-in phones only). Paired phones at
    home see it at their next check.
 3. For phones away from home: `phone/.venv/bin/python
-   phone/android/publish.py v0.N "notes"` makes a GitHub release with
+   phone/android/publish.py v0.N "notes" --task TASK_NUMBER` makes a GitHub release with
    `forge.apk` and `forge-android.json` (the app reads the latest release's).
    It scans for private text first; `--dry-run` stops after the scan.
 

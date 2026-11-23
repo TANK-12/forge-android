@@ -11,10 +11,9 @@ public final class MediaKeys {
   private MediaKeys() {}
 
   /** Press a media key, with real times (Relay task 1330). Android sends it to
-      the app playing now, or else the one that played last; checked on the
-      Android 14 emulator: MediaSessionService passes it to that app. (A note
-      when nothing answers cannot be shown from here: Android drops a widget's
-      toasts while Forge's notifications are off.) */
+      the app playing now, or else the one that played last. Keep the combined
+      key for players that support only toggling; the separate Pause button
+      sends a plain pause without guessing the session's playback state. */
   public static void press(Context c, int code) {
     AudioManager audio = (AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
     if (audio == null || code == 0) return;

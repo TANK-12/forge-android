@@ -260,3 +260,32 @@ def test_page_only_served_from_the_apk():
     assert 'path.contains("..")' in java
     assert "setAllowFileAccess(false)" in java
     assert "shouldOverrideUrlLoading" in java
+
+
+def test_pause_control_has_a_distinct_key_without_changing_toggle() -> None:
+    """Each visible Pause control binds to its own key; toggles stay supported."""
+    for folder, source in (
+        ("theme", "theme/Widgets.java"),
+        ("visualiser", "visualiser/VizWidget.java"),
+    ):
+        java = (THEME / folder / "src/app/forge" / source).read_text()
+        layout = (
+            THEME
+            / folder
+            / "res/layout"
+            / f"widget_{'music' if folder == 'theme' else folder}.xml"
+        ).read_text()
+        assert "{R.id.pause, KeyEvent.KEYCODE_MEDIA_PAUSE}" in java
+        assert "{R.id.play, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE}" in java
+        assert 'android:id="@+id/pause"' in layout
+        assert 'android:contentDescription="Pause"' in layout
+    bridge = (VIZ / "src/app/forge/visualiser/Bridge.java").read_text()
+    assert '"pause".equals(which) ? KeyEvent.KEYCODE_MEDIA_PAUSE' in bridge
+    assert (
+        'data-key="pause" aria-label="Pause"'
+        in (VIZ / "assets/host/index.html").read_text()
+    )
+    assert (
+        "isMusicActive"
+        not in (THEME / "common/src/app/forge/look/MediaKeys.java").read_text()
+    )

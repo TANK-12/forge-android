@@ -72,6 +72,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     ap.add_argument("tag")
     ap.add_argument("notes")
+    ap.add_argument("--task", type=int, help="Relay task recorded in the source commit")
     ap.add_argument("--dry-run", action="store_true", help="stage and scan only")
     a = ap.parse_args()
     apk = HERE / "build" / "forge.apk"
@@ -105,9 +106,21 @@ def main() -> int:
             if old.name != ".git":
                 shutil.rmtree(old) if old.is_dir() else old.unlink()
         shutil.copytree(work, clone, dirs_exist_ok=True)
-        run("git", "add", "-A", cwd=clone)
+        paths = run(
+            "git",
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-z",
+            cwd=clone,
+        ).split("\0")
+        run("git", "add", "--", *(path for path in paths if path), cwd=clone)
         if run("git", "status", "--porcelain", cwd=clone):
-            run("git", "commit", "-q", "-m", f"Forge for Android {a.tag}", cwd=clone)
+            message = f"Forge for Android {a.tag}"
+            if a.task is not None:
+                message += f" (Relay task {a.task})"
+            run("git", "commit", "-q", "-m", message, cwd=clone)
             run("git", "branch", "-M", "main", cwd=clone)
             run("git", "push", "-q", "-u", "origin", "main", cwd=clone)
         if subprocess.run(

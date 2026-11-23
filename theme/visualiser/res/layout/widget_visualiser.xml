@@ -32,21 +32,24 @@
         android:indeterminateTint="#ff8fb8ff" android:indeterminateTintMode="src_in"
         android:minWidth="0dp" android:minHeight="18dp" android:maxWidth="4000dp"
         android:maxHeight="4000dp" android:importantForAccessibility="no" />
-    <LinearLayout android:layout_width="match_parent" android:layout_height="40dp"
+    <LinearLayout android:layout_width="match_parent" android:layout_height="48dp"
         android:layout_marginTop="2dp" android:orientation="horizontal" android:gravity="center">
-      <ImageButton android:id="@+id/prev" android:layout_width="0dp" android:layout_height="40dp"
+      <ImageButton android:id="@+id/prev" android:layout_width="0dp" android:layout_height="48dp"
           android:layout_weight="1" android:src="@drawable/ic_prev" android:background="@null"
           android:contentDescription="Previous song" />
-      <ImageButton android:id="@+id/play" android:layout_width="0dp" android:layout_height="40dp"
+      <ImageButton android:id="@+id/play" android:layout_width="0dp" android:layout_height="48dp"
           android:layout_weight="1" android:src="@drawable/ic_play_pause" android:background="@null"
           android:contentDescription="Play or pause" />
-      <ImageButton android:id="@+id/next" android:layout_width="0dp" android:layout_height="40dp"
+      <ImageButton android:id="@+id/pause" android:layout_width="0dp" android:layout_height="48dp"
+          android:layout_weight="1" android:src="@drawable/ic_pause" android:background="@null"
+          android:contentDescription="Pause" />
+      <ImageButton android:id="@+id/next" android:layout_width="0dp" android:layout_height="48dp"
           android:layout_weight="1" android:src="@drawable/ic_next" android:background="@null"
           android:contentDescription="Next song" />
-      <ImageButton android:id="@+id/look" android:layout_width="0dp" android:layout_height="40dp"
+      <ImageButton android:id="@+id/look" android:layout_width="0dp" android:layout_height="48dp"
           android:layout_weight="1" android:src="@drawable/ic_look" android:background="@null"
           android:contentDescription="Next look" />
-      <ImageButton android:id="@+id/full" android:layout_width="0dp" android:layout_height="40dp"
+      <ImageButton android:id="@+id/full" android:layout_width="0dp" android:layout_height="48dp"
           android:layout_weight="1" android:src="@drawable/ic_full" android:background="@null"
           android:contentDescription="Full screen" />
     </LinearLayout>

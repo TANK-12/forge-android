@@ -109,10 +109,11 @@ public final class Bridge {
     if (key.equals(Prefs.PRESET) || key.equals(Prefs.WALL)) main.post(() -> VizWidget.refreshAll(app));
   }
 
-  /** Media keys for whatever app is playing: prev, play or next. */
+  /** Media keys for whatever app is playing: previous, toggle, pause or next. */
   @JavascriptInterface public void key(String which) {
     int code = "prev".equals(which) ? KeyEvent.KEYCODE_MEDIA_PREVIOUS
         : "next".equals(which) ? KeyEvent.KEYCODE_MEDIA_NEXT
+        : "pause".equals(which) ? KeyEvent.KEYCODE_MEDIA_PAUSE
         : "play".equals(which) ? KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE : 0;
     MediaKeys.press(app, code);
   }
