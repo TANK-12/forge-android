@@ -1,3 +1,50 @@
+// Workspaces share the same local origins and saved app data as earlier builds.
+const pages = ["home", "apps", "wallpaper", "computers", "settings"];
+let localApps = [];
+let homePins = null;
+try { homePins = JSON.parse(localStorage.getItem("forge.android.pins")); } catch { /* default grid */ }
+if (!Array.isArray(homePins)) homePins = null;
+function showPage() {
+  const requested = location.hash.slice(1);
+  const page = pages.includes(requested) ? requested : "home";
+  document.querySelectorAll("[data-pane]").forEach((pane) => {
+    const available = pane.id !== "walls" || walls.themes.length || walls.looks.length;
+    pane.hidden = pane.dataset.pane !== page || !available;
+  });
+  document.querySelectorAll("[data-page]").forEach((link) => {
+    if (link.dataset.page === page) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+  if (typeof wallPreview !== "undefined" && wallPreview) wallPreview.sync();
+  document.title = `Forge · ${page[0].toUpperCase()}${page.slice(1)}`;
+}
+function renderApps() {
+  const query = $("app-search").value.trim().toLowerCase();
+  const matches = localApps.filter((app) => `${app.label} ${app.name} ${app.tagline}`.toLowerCase().includes(query));
+  const pins = homePins === null ? localApps.slice(0, 6).map((app) => app.name) : homePins;
+  $("apps").replaceChildren(...matches.map((app) => {
+    const card = el("div", "launcher");
+    const pin = el("button", "pin", pins.includes(app.name) ? "★" : "☆");
+    pin.type = "button";
+    pin.setAttribute("aria-label", `${pins.includes(app.name) ? "Unpin" : "Pin"} ${app.label || app.name} ${pins.includes(app.name) ? "from" : "to"} Home`);
+    pin.setAttribute("aria-pressed", String(pins.includes(app.name)));
+    pin.addEventListener("click", () => {
+      homePins = pins.includes(app.name) ? pins.filter((name) => name !== app.name) : [...pins, app.name];
+      try { localStorage.setItem("forge.android.pins", JSON.stringify(homePins)); } catch { /* keep this session */ }
+      renderApps();
+    });
+    card.append(tile(app, `https://${app.name}.offline.forge/`), pin);
+    return card;
+  }));
+  $("home-apps").replaceChildren(...localApps.filter((app) => pins.includes(app.name)).map((app) => tile(app, `https://${app.name}.offline.forge/`)));
+  $("app-count").textContent = `${matches.length} of ${localApps.length} apps · saves stay on this device`;
+  $("app-empty").hidden = matches.length > 0;
+}
+function homeClock() {
+  const now = new Date();
+  $("home-clock").textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  $("home-date").textContent = now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
+}
 // The APK's start page: a top in the picked Forge theme, the Visualiser
 // and Wallpaper and widgets one tap away, the paired computers side by side
 // (Heat, Mirror, the XPS) with their apps, adding one (found on the Wi-Fi, a pairing link
@@ -171,6 +218,7 @@ function load() {
     .then((r) => r.json())
     .then((state) => {
       sharing = state.sharing || 0;
+      if (sharing || params.has("pair_host")) location.hash = "computers";
       showShare();
       const list = $("computers");
       list.replaceChildren(...state.computers.map(card));
@@ -214,6 +262,7 @@ function fillFrom(text) {
 }
 
 function pairError(message) {
+  if (message) location.hash = "computers";
   $("add").open = true;
   $("pair-error").textContent = message;
   $("pair-error").hidden = !message;
@@ -295,9 +344,9 @@ window.forgeAnswer = (r) => {
 fetch("/apps.json")
   .then((r) => r.json())
   .then((apps) => {
-    const grid = $("apps");
-    for (const app of apps) grid.append(tile(app, `https://${app.name}.offline.forge/`));
-    $("local").hidden = !apps.length;
+    localApps = apps;
+    renderApps();
+    showPage();
   });
 
 function nameThings(tablet) {
@@ -326,7 +375,7 @@ if (window.ForgeDevice) {
     const form = (d.registry.forms[d.form] || {}).label || d.form;
     facts.push(/screen$/i.test(form) ? form.toLowerCase() : `${form.toLowerCase()} screen`);
     $("device-facts").textContent = facts.join(", ");
-    $("device").hidden = false;
+    showPage();
   }).catch(() => nameThings(false));
 } else {
   nameThings(false);
@@ -371,8 +420,13 @@ function applyLook(t) {
   root.setProperty("--live", t.accent);
   root.setProperty("--live2", hex.test(t.accent2 || "") ? t.accent2 : mix(t.accent, text, 0.45));
   root.setProperty("--on-live", light(t.accent) ? "#0b0d12" : "#ffffff");
+  root.setProperty("--wall-dim", String(Math.max(0, Math.min(1, t.dim ?? 0.12))));
   root.colorScheme = light(t.bg) ? "light" : "dark";
   if (/^walls\/[a-z0-9._-]+\.(jpg|png|webp)$/.test(t.wall || "")) root.setProperty("--wall", `url("/${t.wall}")`);
+  root.setProperty("--wall", t.wall === "home-picture" ? 'url("/home-picture")' : /^walls\/[a-z0-9._-]+\.(jpg|png|webp)$/.test(t.wall || "") ? `url("/${t.wall}")` : "none");
+  window.FORGE_THEME = t;
+  if (typeof Particles !== "undefined") Particles.apply();
+  if (typeof walls !== "undefined" && walls.themes.length) showWalls();
   if (t.label) $("look-line").textContent = `${t.label} theme. Wallpaper, live wallpaper and widgets.`;
 }
 
@@ -401,6 +455,7 @@ greet();
 // used as the live wallpaper (it changes at once when that Forge wallpaper is
 // already in use; otherwise Android asks once), or a theme's picture is set
 // as a plain still wallpaper. Main.java does the setting.
+let wallPreview;
 const walls = { tab: "theme", themes: [], looks: [], now: {}, pick: { theme: "", visualiser: "" } };
 const hexColour = /^#[0-9a-f]{6}$/i;
 
@@ -460,15 +515,26 @@ function showWalls() {
   const id = walls.pick[kind];
   const item = list.find((x) => x.id === id);
   const actions = [];
+  $("wall-preview-wrap").hidden = kind !== "theme" || !item;
+  if (item && kind === "theme") {
+    const current = window.FORGE_THEME || {};
+    const previewLook = { ...current, ...item, particles: current.particle_kind && current.particle_kind !== "theme" ? current.particles : item.particles };
+    if (!wallPreview && typeof Particles !== "undefined") wallPreview = Particles.preview($("wall-preview"), () => previewLook);
+    if (wallPreview) { wallPreview.look = () => previewLook; wallPreview.apply(); }
+    $("wall-preview-wrap").style.backgroundImage = /^walls\/[a-z0-9._-]+\.(jpg|png|webp)$/.test(item.wall || "") ? `url("/${item.wall}")` : "none";
+    $("wall-preview-wrap").style.backgroundColor = item.bg || "var(--bg)";
+    $("wall-preview-caption").textContent = `${item.label || item.id} · preview inside Forge`;
+  }
   // task 1330: what this tablet's Android has for live wallpapers (Main.java,
   // LiveWall): its confirm screen, its list, the maker's wallpaper app, or none
   const way = n.live || "confirm";
   const name = kind === "theme" ? "Forge particles" : "Forge visualiser";
-  if (item) {
+  if (item && n.allowed !== false) {
     const live = new URLSearchParams({ kind, id });
     const ours = n.now === kind;
     if (way !== "none" || ours) {
       actions.push(wallButton(ours ? "Use it now" : "Set as live wallpaper", `/wall-live?${live}`));
+      if (!ours && n.result && way !== "none") actions.push(wallButton("Try another Android screen", `/wall-live?${live}&next=true`, true));
     } else if (kind === "visualiser") {
       actions.push(wallButton("Open the visualiser", "/visualiser"));
     }
@@ -482,15 +548,17 @@ function showWalls() {
       ? "Changes at once: this Forge wallpaper is already on."
       : way === "none"
         ? kind === "theme"
-          ? "Forge can't open a live wallpaper screen on this tablet, so the theme goes on as a picture."
-          : "Forge can't open a live wallpaper screen on this tablet; the visualiser plays full screen in its app."
+          ? "Android has no live wallpaper picker Forge can open. Animation cannot be applied to the Android home screen without a working system picker. Still buttons apply a picture only."
+          : "Android has no live wallpaper picker Forge can open. The visualiser can still animate inside Forge; that does not apply it to the Android home screen."
         : way === "app"
           ? `Only once: Forge opens ${n.live_app || "the tablet's wallpaper app"}, where you pick ${name}. After that Forge switches it with no questions. Exactly where to tap:`
           : way === "list"
             ? `Only once: Forge opens ${n.live_app || "the tablet's list of live wallpapers"}, where you pick ${name}. After that Forge switches it with no questions. Exactly where to tap:`
             : "Only once: Android shows the wallpaper to confirm. After that Forge switches it with no questions. Exactly where to tap:";
   } else {
-    $("wall-note").textContent = "Pick one to see what you can do with it.";
+    $("wall-note").textContent = n.allowed === false
+      ? "Android blocks wallpaper changes for this profile. No still picture or live wallpaper was applied."
+      : "Pick one to see what you can do with it.";
   }
   // task 1334: the steps in this tablet's own names (Main.java, LiveWall.Plan)
   const steps = item && n.now !== kind && way !== "none" ? (n.live_steps || {})[kind] || [] : [];
@@ -504,6 +572,8 @@ function loadWalls() {
     .then((r) => r.json())
     .then((n) => {
       walls.now = n;
+      $("wall-result").textContent = n.result ? `Last attempt: ${n.result}` : "";
+      $("wall-diagnostics").textContent = n.diagnostics || "No device details returned.";
       if (!walls.pick.theme) walls.pick.theme = n.theme || "";
       if (!walls.pick.visualiser) walls.pick.visualiser = n.look || "";
       if (n.pin === false) $("widgets-note").textContent = "This home screen adds widgets itself: long-press it, then Widgets, then Forge.";
@@ -519,7 +589,7 @@ Promise.all([
   .then(([themes, looks]) => {
     walls.themes = (Array.isArray(themes) ? themes : []).filter((t) => t && t.id);
     walls.looks = (Array.isArray(looks) ? looks : looks.presets || []).filter((l) => l && l.id);
-    $("walls").hidden = !walls.themes.length && !walls.looks.length;
+    showPage();
     loadWalls();
   })
   .catch(() => {});
@@ -614,7 +684,28 @@ $("update-check").addEventListener("click", () => (location.href = "/update-chec
 $("update-go").addEventListener("click", () => (location.href = "/update-install"));
 $("offer").addEventListener("click", (e) => {
   e.preventDefault();
+  location.hash = "settings";
+  showPage();
   $("about").scrollIntoView({ behavior: "smooth", block: "center" });
-  if (update.offer && !update.fetching) location.href = "/update-install";
 });
 loadUpdate();
+
+window.addEventListener("hashchange", () => { showPage(); window.scrollTo(0, 0); });
+$("app-search").addEventListener("input", renderApps);
+$("wall-copy").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("wall-diagnostics").textContent);
+    $("wall-copy").textContent = "Copied";
+  } catch {
+    const selection = window.getSelection();
+    selection.selectAllChildren($("wall-diagnostics"));
+    $("wall-copy").textContent = document.execCommand("copy") ? "Copied" : "Select and copy the details";
+  }
+});
+if (typeof Particles !== "undefined") {
+  Particles.init();
+  Particles.apply();
+}
+homeClock();
+setInterval(() => { if (!document.hidden) { homeClock(); lookNow(); } }, 30000);
+showPage();

@@ -2,7 +2,6 @@ package app.forge.look;
 
 import android.app.Activity;
 import android.app.WallpaperManager;
-import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -15,10 +14,9 @@ import android.content.pm.ResolveInfo;
 import android.content.res.Resources;
 import android.widget.Toast;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -35,9 +33,9 @@ import java.util.regex.Pattern;
  * there: the name the tablet shows for the app Forge opens, the name that
  * app itself uses for its live wallpaper section (read from its own words,
  * "Live wallpapers" when it has none Forge can find) and the name the
- * tablet lists Forge's wallpaper under. A tablet with no way at all, or with
- * live wallpapers off altogether, gets {@link #NONE} and the caller offers a
- * still picture instead of a complaint.
+ * tablet lists Forge's wallpaper under. No route or a wallpaper policy
+ * restriction returns {@link #NONE}. A picture remains a separate choice;
+ * neither opening a picker nor selecting a service proves moving frames.
  */
 public final class LiveWall {
   /** What a tap opens. */
@@ -74,7 +72,9 @@ public final class LiveWall {
   /** The ways to try, in order: each an explicit intent to an activity that is there. */
   static List<Way> ways(Context c, ComponentName service) {
     List<Way> out = new ArrayList<>();
-    if (!supported(c)) return out;
+    // The feature declaration is missing on some ROMs with usable picker activities.
+    WallpaperManager manager = WallpaperManager.getInstance(c);
+    if (!manager.isWallpaperSupported() || !manager.isSetWallpaperAllowed()) return out;
     PackageManager pm = c.getPackageManager();
     Intent change = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
         .putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, service);
@@ -95,17 +95,17 @@ public final class LiveWall {
       }
     }
     int at = out.size();
-    add(out, c, pm, new Intent(Intent.ACTION_SET_WALLPAPER), WALLPAPER_APP);
+    add(out, c, pm, new Intent(Intent.ACTION_SET_WALLPAPER)
+        .putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, service), WALLPAPER_APP);
     // the live wallpaper page inside the wallpaper app, when it has one by name
     if (out.size() > at && out.get(at).sys) {
       Way app = out.get(at);
-      Set<String> skip = skipped(c);
       List<Way> inside = new ArrayList<>();
       for (ActivityInfo a : activities(pm, app.intent.getComponent().getPackageName())) {
         ComponentName cn = new ComponentName(a.packageName, a.name);
         String simple = a.name.substring(a.name.lastIndexOf('.') + 1);
         if (!INSIDE.matcher(simple).matches() || NOT_INSIDE.matcher(simple).matches()) continue;
-        if (skip.contains(cn.flattenToString()) || has(out, cn)) continue;
+        if (has(out, cn)) continue;
         Way w = new Way(new Intent(Intent.ACTION_MAIN).setComponent(cn), LIST, true, app.label);
         w.inside = true;
         inside.add(w);
@@ -291,10 +291,34 @@ public final class LiveWall {
   /** Open the first way that starts, then say where to tap; the words for what
       opened (its kind {@link #NONE} when nothing could). */
   public static Plan open(Activity a, ComponentName service) {
+    return open(a, service, false);
+  }
+
+  /** Retry another Android screen without permanently excluding a cancelled one. */
+  public static Plan openNext(Activity activity, ComponentName service) {
+    return open(activity, service, true);
+  }
+
+  private static Plan open(Activity a, ComponentName service, boolean next) {
     List<Way> all = ways(a, service);
+    if (next && !all.isEmpty()) {
+      String previous = a.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("route", "");
+      for (int index = 0; index < all.size(); index++) {
+        if (all.get(index).intent.getComponent().flattenToShortString().equals(previous)) {
+          Collections.rotate(all, -(index + 1));
+          break;
+        }
+      }
+    }
     boolean choose = chooses(all);
     for (Way w : all) {
       try {
+        a.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("owner", a.getClass().getName())
+            .putString("service", service.flattenToString())
+            .putString("route", w.intent.getComponent().flattenToShortString())
+            .putString("last_result", "Waiting for Android to apply " + entry(a, service) + ".")
+            .putLong("at", System.currentTimeMillis()).commit();
         if (w.kind == WALLPAPER_APP && choose) {
           // no app that is clearly the wallpaper app: Android asks which one
           a.startActivity(chooser(a, all));
@@ -313,48 +337,76 @@ public final class LiveWall {
         String line = said.line();
         if (!line.isEmpty() && w.kind != CONFIRM) Toast.makeText(a, line, Toast.LENGTH_LONG).show();
         return said;
-      } catch (RuntimeException e) {
-        // not there after all (ActivityNotFoundException, SecurityException): the next way
+      } catch (android.content.ActivityNotFoundException | SecurityException e) {
+        // The advertised activity cannot be opened: try the next route.
       }
     }
+    a.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove("at")
+        .putString("last_result", "No live wallpaper picker could be opened. Android has not applied animation.").apply();
     return new Plan(NONE, "", "", entry(a, service), false, null);
   }
 
   /**
    * Back in Forge after {@link #open}: what to say (the wallpaper is on, or
-   * where to tap again), or null when Forge opened nothing. A guessed page
-   * inside the wallpaper app that did not lead to the wallpaper is skipped
-   * from then on, so the next tap opens the app itself.
+   * where to tap again), or null for another activity. Opening settings from
+   * Android's preview must not consume the originating activity's attempt.
    */
   public static String back(Context c) {
-    SharedPreferences p = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-    long at = p.getLong("at", 0);
-    ComponentName service = ComponentName.unflattenFromString(p.getString("service", ""));
-    String opened = p.getString("opened", "");
-    p.edit().remove("at").remove("opened").remove("service").apply();
-    if (at == 0 || service == null) return null;
-    boolean active = false;
+    SharedPreferences prefs = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    if (!c.getClass().getName().equals(prefs.getString("owner", ""))) return null;
+    ComponentName service = ComponentName.unflattenFromString(prefs.getString("service", ""));
+    if (prefs.getLong("at", 0) == 0 || service == null) return null;
+    int status = state(c, service);
+    String result = status == 1
+        ? entry(c, service) + " was selected by Android. Motion follows the particle and battery settings below."
+        : status == 0 ? "Android did not apply " + entry(c, service)
+            + ". Opening a wallpaper app alone does not enable it. You can try again."
+        : "Android could not confirm the wallpaper. Your selection is kept while Forge checks again.";
+    SharedPreferences.Editor edit = prefs.edit().putString("last_result", result);
+    if (status != -1) edit.remove("at").remove("opened");
+    edit.apply();
+    return result;
+  }
+
+  /** 1 when Android selected this service, 0 for another wallpaper, -1 when unreadable. */
+  public static int state(Context context, ComponentName service) {
     try {
-      android.app.WallpaperInfo info = WallpaperManager.getInstance(c).getWallpaperInfo();
-      active = info != null && service.equals(info.getComponent());
-    } catch (RuntimeException e) {
-      // unknown: said as not yet
+      android.app.WallpaperInfo info = WallpaperManager.getInstance(context).getWallpaperInfo();
+      return info != null && service.equals(info.getComponent()) ? 1 : 0;
+    } catch (RuntimeException error) {
+      return -1;
     }
-    Plan plan = plan(c, service);
-    if (active) return plan.entry + " is on now. From here Forge switches it with no questions.";
-    if (opened != null && !opened.isEmpty()) {
-      Set<String> skip = new HashSet<>(skipped(c));
-      skip.add(opened);
-      p.edit().putStringSet("skip", skip).apply();
-      return "Not set yet. Next time Forge opens the app itself: " + plan(c, service).line();
-    }
-    return "Not set yet. " + plan.line();
   }
 
-  private static Set<String> skipped(Context c) {
-    return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet("skip", new HashSet<>());
+  public static String result(Context context) {
+    return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("last_result", "");
   }
 
+  public static void recordResult(Context context, String result) {
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("last_result", result).apply();
+  }
+
+  /** Device-local evidence, without computer addresses, pairing keys or personal files. */
+  public static String diagnostics(Context context, ComponentName service) {
+    WallpaperManager manager = WallpaperManager.getInstance(context);
+    StringBuilder text = new StringBuilder("Device: ").append(android.os.Build.MANUFACTURER)
+        .append(" ").append(android.os.Build.MODEL)
+        .append("\nAndroid: ").append(android.os.Build.VERSION.RELEASE)
+        .append(" (API ").append(android.os.Build.VERSION.SDK_INT).append(")")
+        .append("\nLive wallpaper feature declared: ").append(supported(context))
+        .append("\nWallpaper supported: ").append(manager.isWallpaperSupported())
+        .append("\nWallpaper changes allowed: ").append(manager.isSetWallpaperAllowed())
+        .append("\nRequested service: ").append(service.flattenToShortString())
+        .append("\nAndroid selected this service: ").append(state(context, service))
+        .append(" (1 yes, 0 no, -1 unknown)");
+    List<Way> routes = ways(context, service);
+    text.append("\nPicker routes: ").append(routes.size());
+    for (Way route : routes) text.append("\n  ").append(word(route.kind)).append(": ")
+        .append(route.intent.getComponent().flattenToShortString());
+    text.append("\nLast route: ").append(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getString("route", "none")).append("\n").append(result(context));
+    return text.toString();
+  }
 
   /** Android's chooser over the wallpaper apps kept, without the galleries dropped. */
   private static Intent chooser(Context c, List<Way> kept) {

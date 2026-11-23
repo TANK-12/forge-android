@@ -117,3 +117,79 @@ main > .cols { animation-delay: 0.1s; }
 .wall-steps { margin: 4px 0 0; padding-left: 22px; }
 .wall-steps li { margin: 3px 0; }
 .wall-steps[hidden] { display: none; }
+
+/* Forge's wallpaper, workspaces and glass surfaces, sized for touch. */
+html { min-height: 100%; background: var(--bg); }
+body { min-height: 100vh; background: transparent; }
+.wallpaper-backdrop { position: fixed; inset: 0; z-index: -2; background: linear-gradient(rgba(0,0,0,var(--wall-dim, .12)), rgba(0,0,0,var(--wall-dim, .12))), linear-gradient(color-mix(in srgb, var(--bg) 48%, transparent), color-mix(in srgb, var(--bg) 84%, transparent)), var(--wall) center / cover, var(--bg); }
+#particles { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+main { max-width: 1220px; padding: 24px 28px 112px; }
+.cols, .side { display: contents; }
+.workspace-nav { position: fixed; z-index: 10; inset: auto 12px max(12px, env(safe-area-inset-bottom)); display: flex; padding: 6px; gap: 2px; border: 1px solid var(--line); background: color-mix(in srgb, var(--card) 94%, transparent); border-radius: 24px; backdrop-filter: blur(24px); box-shadow: 0 12px 48px #0005; }
+.workspace-nav > a { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 56px; min-width: 0; border-radius: 18px; color: var(--dim); font-size: 11px; text-decoration: none; }
+.workspace-nav > a > span:first-child { font-size: 23px; line-height: 1.1; }
+.workspace-nav > a[aria-current] { background: color-mix(in srgb, var(--live) 17%, var(--card)); color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--live) 38%, transparent); }
+.workspace-nav .nav-brand { display: none; }
+.hero { background: transparent; min-height: 0; border-radius: 0; margin: 0 0 20px; padding: 8px 0 18px; color: var(--text); overflow: visible; }
+.hero::after { display: none; }
+.hero-top { margin-bottom: 38px; }
+.hero h1 { font-size: clamp(24px, 4vw, 36px); margin: 14px 0 5px; text-shadow: none; }
+.hero p { color: var(--dim); text-shadow: none; }
+.home-clock { display: block; font-size: clamp(58px, 11vw, 110px); font-weight: 300; letter-spacing: -.065em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+#home-date { margin-top: 8px; font-size: 16px; }
+.chip { background: var(--card); color: var(--text); border: 1px solid var(--line); }
+.section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+.section-head h2 { margin: 0; }
+.home-apps { margin-bottom: 22px; }
+.card, .computer, .feature, .app { background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(12px); }
+.card, .computer { padding: 16px 20px 20px; border-radius: 22px; }
+.card h2 { margin-top: 0; }
+.grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.app { min-height: 112px; padding: 16px; border-left: 1px solid var(--line); grid-template-columns: 40px 1fr; gap: 6px 10px; }
+.icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 13px; background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+.app strong { font-size: 16px; }
+.app small { line-height: 1.45; }
+.launcher { position: relative; min-width: 0; }
+.launcher .app { height: 100%; padding-right: 48px; }
+.pin { position: absolute; right: 3px; top: 3px; padding: 0; min-height: 44px; width: 44px; font-size: 22px; background: transparent; color: var(--dim); }
+.pin[aria-pressed="true"] { color: var(--live); }
+.page-heading h1 { font-size: 32px; margin: 0 0 24px; }
+.eyebrow { font-size: 14px; color: var(--live); margin-top: 4px; }
+.app-search { display: block; margin-bottom: 12px; }
+.app-search span { display: none; }
+.app-search input { width: 100%; background: var(--card); }
+.wall-grid { grid-auto-columns: minmax(180px, 230px); }
+.wall { min-height: 136px; }
+.wall-result:empty { display: none; }
+.wall-result { padding: 12px; border: 1px solid var(--live); border-radius: 12px; }
+.diagnostics summary { font-weight: 600; }
+.diagnostics pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; color: var(--dim); }
+:focus-visible { outline: 2px solid var(--live); outline-offset: 3px; }
+.tab { min-height: 48px; }
+@media (min-width: 760px) and (min-height: 480px) {
+  main { padding: 30px 40px 40px 146px; }
+  .workspace-nav { inset: 16px auto 16px 16px; width: 100px; flex-direction: column; justify-content: flex-start; padding: 10px 6px; border-radius: 24px; }
+  .workspace-nav > a { flex: 0 0 64px; font-size: 12px; }
+  .workspace-nav .nav-brand { display: flex; gap: 6px; flex-basis: 80px; margin-bottom: 12px; color: var(--text); font-size: 16px; }
+  .hero-top { display: none; }
+  .hero { padding-top: 16px; }
+  .home-clock { font-size: 100px; }
+  .features { grid-template-columns: 1fr 1fr; }
+  .feature.viz { min-height: 150px; }
+  .feature.look { min-height: 150px; }
+}
+@media (max-width: 480px) {
+  main { padding: 14px 16px 110px; }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-height: 146px; padding: 12px; }
+  .launcher .app { padding-right: 12px; }
+  .app strong { font-size: 14px; }
+  .app small { font-size: 12px; }
+  .card { padding: 14px; }
+  .tabs { flex-wrap: wrap; }
+  .wall-actions .button { flex: 1 1 100%; }
+}
+
+.wall-preview { position: relative; height: 200px; margin: 4px 0 16px; border-radius: 16px; overflow: hidden; background-position: center; background-size: cover; }
+#wall-preview { width: 100%; height: 100%; background: rgba(0,0,0,var(--wall-dim, .12)); }
+.wall-preview figcaption { position: absolute; bottom: 8px; left: 8px; padding: 5px 10px; border-radius: 8px; color: #fff; background: #000b; font-size: 13px; }

@@ -112,7 +112,7 @@ public final class PlayerActivity extends Activity implements Bridge.Actions {
     if (opened != app.forge.look.LiveWall.NONE && !said.line().isEmpty()) {
       Host.js(web, "note(" + org.json.JSONObject.quote(said.line()) + ")");
     } else if (opened == app.forge.look.LiveWall.NONE) {
-      Host.js(web, "note('Moving wallpapers are off on this tablet: the visualiser plays here, full screen')");
+      Host.js(web, "note('Android has no live wallpaper picker Forge can open. The visualiser can still play here.')");
     }
   }
 

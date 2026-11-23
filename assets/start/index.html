@@ -7,21 +7,37 @@
 <link rel="stylesheet" href="/start.css">
 </head>
 <body>
+<div class="wallpaper-backdrop" aria-hidden="true"></div>
+<canvas id="particles" aria-hidden="true"></canvas>
+<nav class="workspace-nav" aria-label="Forge workspaces">
+  <a class="nav-brand" href="#home" aria-label="Forge home"><img src="/icon.svg" alt="" width="32" height="32"><b>Forge</b></a>
+  <a href="#home" data-page="home"><span aria-hidden="true">⌂</span><span>Home</span></a>
+  <a href="#apps" data-page="apps"><span aria-hidden="true">▦</span><span>Apps</span></a>
+  <a href="#wallpaper" data-page="wallpaper"><span aria-hidden="true">◈</span><span>Wallpaper</span></a>
+  <a href="#computers" data-page="computers"><span aria-hidden="true">▣</span><span>Computers</span></a>
+  <a href="#settings" data-page="settings"><span aria-hidden="true">⚙</span><span>Settings</span></a>
+</nav>
 <main>
-  <header class="hero" id="hero">
+  <header class="hero" id="hero" data-pane="home">
     <div class="hero-top"><img src="/icon.svg" alt="" width="34" height="34"><span class="brand">Forge</span><span class="chip" id="hero-version"></span></div>
+    <time id="home-clock" class="home-clock" aria-label="Time"></time><p id="home-date"></p>
     <h1 id="greet">Hello</h1>
-    <p id="hero-line">Your computers, your music and your look, in one place.</p>
-    <a class="offer" id="offer" href="#about" hidden><span id="offer-line"></span><b>Update</b></a>
+    <p id="hero-line">Make yourself at home.</p>
+    <a class="offer" id="offer" href="#settings" hidden><span id="offer-line"></span><b>Update</b></a>
   </header>
 
-  <nav class="features" aria-label="On this phone">
+  <section class="home-apps" data-pane="home">
+    <div class="section-head"><h2>Your space</h2><a class="button quiet" href="#apps">All apps</a></div>
+    <p class="note">Pin your favourites from Apps. Everything here runs on this device.</p>
+    <div id="home-apps" class="grid"></div>
+  </section>
+  <nav class="features" data-pane="home" aria-label="Make it yours">
     <a class="feature viz" href="/visualiser" id="viz-tile">
       <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
       <span class="feature-text"><strong>Visualiser</strong><small id="viz-line">Your music, drawn live</small></span>
       <span class="go" aria-hidden="true">Play</span>
     </a>
-    <a class="feature look" href="/theme" id="look-tile">
+    <a class="feature look" href="#wallpaper" id="look-tile">
       <span class="feature-text"><strong>Wallpaper and widgets</strong><small id="look-line">Forge's themes on your home screen</small></span>
       <span class="go quiet" aria-hidden="true">Open</span>
     </a>
@@ -32,22 +48,27 @@
     <span class="muted" id="share-how"></span>
   </section>
 
-  <section class="card walls" id="walls" hidden>
+  <section class="card walls" id="walls" data-pane="wallpaper" hidden>
     <div class="walls-head">
       <h2>Wallpapers</h2>
       <span class="muted" id="walls-now"></span>
     </div>
+    <p class="note">Preview a look here. Android confirms the first live wallpaper; once it is active, new looks change at once.</p>
+    <div class="row"><a class="button quiet" href="/theme">Particle and picture settings</a></div>
     <div class="tabs" role="tablist" aria-label="Kind of wallpaper">
       <button type="button" class="tab" role="tab" data-tab="theme" aria-selected="true">Forge particles</button>
       <button type="button" class="tab" role="tab" data-tab="visualiser" aria-selected="false">Visualiser</button>
     </div>
     <div class="wall-grid" id="wall-grid" role="listbox" aria-label="Wallpapers"></div>
+    <figure class="wall-preview" id="wall-preview-wrap"><canvas id="wall-preview" aria-label="Animated preview inside Forge"></canvas><figcaption id="wall-preview-caption">Preview inside Forge</figcaption></figure>
+    <p class="wall-result" id="wall-result" role="status"></p>
     <div class="row wall-actions" id="wall-actions"></div>
     <p class="note" id="wall-note"></p>
     <ol class="note wall-steps" id="wall-steps"></ol>
+    <details class="diagnostics"><summary>Wallpaper check</summary><p class="note">These details stay on this device. They distinguish an Android picker problem from paused motion.</p><pre id="wall-diagnostics"></pre><button type="button" class="quiet" id="wall-copy">Copy details</button></details>
   </section>
 
-  <section class="card" id="widgets">
+  <section class="card" id="widgets" data-pane="wallpaper">
     <h2>Widgets</h2>
     <p class="note" id="widgets-note">Put one on the home screen: Android asks where. Long-press it there to resize; tap it to open Forge.</p>
     <div class="row">
@@ -60,7 +81,7 @@
   </section>
 
   <div class="cols">
-    <div class="main">
+    <div class="main" data-pane="computers">
       <h2>Your computers</h2>
       <div id="computers" class="computers"></div>
       <p class="muted" id="none" hidden>No computer yet. Add one below: Heat, Mirror or the XPS, each with Forge open.</p>
@@ -97,17 +118,20 @@
     </div>
 
     <aside class="side">
-      <section id="local" hidden>
+      <section id="local" data-pane="apps" hidden>
+        <div class="page-heading"><p class="eyebrow">Your tools, wherever you are</p><h1>Apps</h1></div>
+        <label class="app-search"><span>Find an app</span><input id="app-search" type="search" placeholder="Search your apps" autocomplete="off"></label>
+        <p class="note" id="app-count" role="status"></p><p class="note" id="app-empty" hidden>No apps match. Try another name.</p>
         <h2>On this <span class="noun">device</span></h2>
         <p class="note">These run with no computer at all. Their saves stay here.</p>
         <div id="apps" class="grid"></div>
       </section>
-      <section class="card" id="device" hidden>
+      <section class="card" id="device" data-pane="settings" hidden>
         <h2>This <span class="noun">device</span></h2>
         <p id="device-now"></p>
         <p class="note" id="device-facts"></p>
       </section>
-      <details class="card" id="petal">
+      <details class="card" id="petal" data-pane="settings">
         <summary>Help with small jobs (Petal)</summary>
         <p class="note">This <span class="noun">device</span> can take small jobs from your computers through Petal: Claude sessions and a couple of battle bot games at a time. Renders and local AI stay on the computers, which also get any job they have room for.</p>
         <ol class="steps">
@@ -118,7 +142,7 @@
         </ol>
         <a class="button quiet" href="http://127.0.0.1:47323/">Open Petal's page here</a>
       </details>
-      <section class="card" id="about">
+      <section class="card" id="about" data-pane="settings">
         <h2>Forge for Android</h2>
         <p id="about-version">Version ...</p>
         <p class="note" id="update-line" role="status">Not checked for updates yet.</p>
@@ -135,6 +159,7 @@
   </div>
 </main>
 <script src="/device.js"></script>
+<script src="/forge_particles.js"></script>
 <script src="/start.js"></script>
 </body>
 </html>

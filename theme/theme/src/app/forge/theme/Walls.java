@@ -35,7 +35,7 @@ public final class Walls {
   /** Pick a theme for the wallpaper and widgets; false for a theme this build lacks. */
   public static boolean use(Context c, String id) {
     if (!known(c, id)) return false;
-    Prefs.store(c).edit().putString(Prefs.THEME, id).apply();
+    if (!Prefs.store(c).edit().putString(Prefs.THEME, id).commit()) return false;
     Widgets.refreshAll(c);
     return true;
   }

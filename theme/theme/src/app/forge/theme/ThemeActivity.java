@@ -221,7 +221,7 @@ public final class ThemeActivity extends Activity {
     int opened = app.forge.look.LiveWall.open(this, new ComponentName(this, ThemeWallpaper.class)).kind;
     if (opened != app.forge.look.LiveWall.NONE) return;
     // no live wallpaper screen Forge can open: say where the still picture is
-    Toast.makeText(this, "On this tablet the theme goes on as a picture: Forge, Wallpapers, Still",
+    Toast.makeText(this, "Android has no live wallpaper picker Forge can open. No animation was applied.",
         Toast.LENGTH_LONG).show();
   }
 

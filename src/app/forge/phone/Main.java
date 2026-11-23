@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
@@ -251,7 +252,23 @@ public class Main extends Activity {
         if (pick == null || id.equals(t.optString("id"))) pick = t;
         if (id.equals(t.optString("id"))) break;
       }
-      return json(pick == null ? "{}" : pick.toString());
+      if (pick == null) return json("{}");
+      SharedPreferences look = getSharedPreferences("look", MODE_PRIVATE);
+      String picture = look.getString("picture", "theme");
+      if ("none".equals(picture)) pick.put("wall", "");
+      else if (picture != null && picture.startsWith("content://")) pick.put("wall", "home-picture");
+      String kind = look.getString("kind", "theme");
+      if (!"theme".equals(kind)) pick.put("particles", kind);
+      app.forge.look.Pacer pacer = new app.forge.look.Pacer(this);
+      pacer.setWanted(look.getInt("fps", 60));
+      int fps = pacer.fps();
+      pick.put("particle_kind", kind).put("particle_amount", look.getFloat("amount", 1f))
+          .put("particle_size", look.getFloat("size", 1f))
+          .put("particle_speed", look.getFloat("speed", 1f))
+          .put("particle_fps", fps).put("animations", fps > 0)
+          .put("click_sparks", look.getBoolean("taps", true))
+          .put("dim", look.getFloat("dim", 0.12f));
+      return json(pick.toString());
     } catch (IOException | JSONException e) {
       return json("{}");
     }
@@ -280,6 +297,8 @@ public class Main extends Activity {
     try {
       JSONObject o = new JSONObject()
           .put("now", now)
+          .put("allowed", android.app.WallpaperManager.getInstance(this).isWallpaperSupported()
+              && android.app.WallpaperManager.getInstance(this).isSetWallpaperAllowed())
           .put("theme", app.forge.theme.Walls.theme(this))
           .put("look", app.forge.visualiser.WallPick.look(this))
           .put("pin", widgets != null && widgets.isRequestPinAppWidgetSupported())
@@ -295,6 +314,19 @@ public class Main extends Activity {
         if (w[0].equals("theme")) o.put("live_app", plan.app).put("live_section", plan.section);
       }
       o.put("live_steps", steps);
+      SharedPreferences look = getSharedPreferences("look", MODE_PRIVATE);
+      app.forge.look.Pacer pacer = new app.forge.look.Pacer(this);
+      pacer.setWanted(look.getInt("fps", 60));
+      int fps = pacer.fps();
+      String diagnostics = "Forge " + Updates.installedName(this) + "\n"
+          + app.forge.look.LiveWall.diagnostics(this, new ComponentName(this, THEME_WALL))
+          + "\nParticle kind: " + look.getString("kind", "theme")
+          + "\nAmount: " + look.getFloat("amount", 1f)
+          + "; size: " + look.getFloat("size", 1f)
+          + "; speed: " + look.getFloat("speed", 1f)
+          + "\nFrame limit: " + fps + "; " + pacer.why()
+          + "\nSelected service does not by itself prove moving frames.";
+      o.put("result", app.forge.look.LiveWall.result(this)).put("diagnostics", diagnostics);
       return json(o.toString());
     } catch (JSONException e) {
       return json("{}");
@@ -306,32 +338,40 @@ public class Main extends Activity {
       system screen; otherwise Android's own screen asks to confirm (apps cannot
       set a live wallpaper by themselves), once. */
   /** The live wallpaper pick waiting on Android's confirm: kind and the pick before it. */
-  String[] wallAsked;
+  SharedPreferences wallpaperPick() {
+    return getSharedPreferences("wallpaper_pick", MODE_PRIVATE);
+  }
 
-  void wallLive(String kind, String id) {
+  void clearWallpaperPick(String kind) {
+    wallpaperPick().edit().remove(kind + "_before").remove(kind + "_requested").commit();
+  }
+
+  void wallLive(String kind, String id, boolean next) {
     boolean viz = "visualiser".equals(kind);
-    String before = viz ? app.forge.visualiser.WallPick.look(this) : app.forge.theme.Walls.theme(this);
+    String requestedKind = viz ? "visualiser" : "theme";
+    String before = wallpaperPick().getString(requestedKind + "_before", null);
+    if (before == null) before = viz ? app.forge.visualiser.WallPick.look(this) : app.forge.theme.Walls.theme(this);
+    // Keep each kind's original choice across retries and unreadable system state.
+    if (!wallpaperPick().edit().putString(requestedKind + "_before", before)
+        .putString(requestedKind + "_requested", id).commit()) return;
     boolean known = viz ? app.forge.visualiser.WallPick.use(this, id) : app.forge.theme.Walls.use(this, id);
-    if (!known) return;
+    if (!known) { wallBack(); answer("{\"resumed\":true}"); return; }
     boolean active = viz ? app.forge.visualiser.WallPick.active(this) : app.forge.theme.Walls.active(this);
     if (active) {
+      clearWallpaperPick(requestedKind);
       Toast.makeText(this, "Wallpaper changed", Toast.LENGTH_SHORT).show();
+      answer("{\"resumed\":true}");
       return;
     }
     // task 1330: the tablet's own wallpaper screen, however its maker named it
-    wallAsked = new String[] {viz ? "visualiser" : "theme", before};
+
     // it says where to tap there itself (task 1334)
-    int opened = app.forge.look.LiveWall.open(this,
-        new android.content.ComponentName(this, viz ? VIZ_WALL : THEME_WALL)).kind;
+    ComponentName service = new ComponentName(this, viz ? VIZ_WALL : THEME_WALL);
+    int opened = (next ? app.forge.look.LiveWall.openNext(this, service)
+        : app.forge.look.LiveWall.open(this, service)).kind;
     if (opened != app.forge.look.LiveWall.NONE) return;
-    // no live wallpaper screen Forge can open: the pick goes back and the card
-    // (reloaded) offers the still picture instead; nothing is changed unasked
-    wallAsked = null;
-    if (before != null && !before.isEmpty()) {
-      if (viz) app.forge.visualiser.WallPick.use(this, before);
-      else app.forge.theme.Walls.use(this, before);
-    }
-    if (web != null) web.evaluateJavascript("typeof loadWalls === 'function' && loadWalls()", null);
+    wallBack();
+    answer("{\"resumed\":true}");
   }
 
   /** A theme's picture as a plain wallpaper on the home screen, the lock screen or both. */
@@ -344,7 +384,12 @@ public class Main extends Activity {
     Toast.makeText(this, "Setting the picture...", Toast.LENGTH_SHORT).show();
     new Thread(() -> {
       String err = app.forge.theme.Walls.still(this, id, which);
-      runOnUiThread(() -> Toast.makeText(this, err == null ? done : err, Toast.LENGTH_LONG).show());
+      runOnUiThread(() -> {
+        Toast.makeText(this, err == null ? done : err, Toast.LENGTH_LONG).show();
+        app.forge.look.LiveWall.recordResult(this, err == null
+            ? "Still picture applied. This does not enable animation." : err);
+        answer("{\"resumed\":true}");
+      });
     }, "forge-still-wallpaper").start();
   }
 
@@ -1205,7 +1250,7 @@ public class Main extends Activity {
           if (path.equals("/visualiser")) openVisualiser();
           else if (path.equals("/theme")) openTheme();
           else if (path.equals("/update-check")) checkUpdates();
-          else if (path.equals("/wall-live")) wallLive(uri.getQueryParameter("kind"), uri.getQueryParameter("id"));
+          else if (path.equals("/wall-live")) wallLive(uri.getQueryParameter("kind"), uri.getQueryParameter("id"), "true".equals(uri.getQueryParameter("next")));
           else if (path.equals("/wall-still")) wallStill(uri.getQueryParameter("id"), uri.getQueryParameter("where"));
           else if (path.equals("/widget-add")) widgetAdd(uri.getQueryParameter("kind"));
           else installUpdate();
@@ -1312,6 +1357,19 @@ public class Main extends Activity {
       if (app.equals("start") && path.equals("/scan.json")) return scanJson();
       if (app.equals("start") && path.equals("/update.json")) return updateJson();
       if (app.equals("start") && path.equals("/look.json")) return lookJson();
+      if (app.equals("start") && path.equals("/home-picture")) {
+        String picture = getSharedPreferences("look", MODE_PRIVATE).getString("picture", "");
+        if (picture != null && picture.startsWith("content://")) {
+          try {
+            android.net.Uri pictureUri = android.net.Uri.parse(picture);
+            return new WebResourceResponse(getContentResolver().getType(pictureUri), null,
+                getContentResolver().openInputStream(pictureUri));
+          } catch (IOException | SecurityException error) {
+            return reply(404, "text/plain", "Picture unavailable");
+          }
+        }
+        return reply(404, "text/plain", "No custom picture");
+      }
       if (app.equals("start") && path.equals("/walls.json")) return wallsJson();
       if (path.equals("/forge-public-fetch") && !app.equals("start")) return publicFetch(app, uri, request);
       if (path.startsWith("/api/")) return reply(503, "application/json", "{\"error\":\"offline\"}");
@@ -1557,14 +1615,22 @@ public class Main extends Activity {
     // task 1334: on now, or exactly where to tap again
     String said = app.forge.look.LiveWall.back(this);
     if (said != null) Toast.makeText(this, said, Toast.LENGTH_LONG).show();
-    String[] asked = wallAsked;
-    wallAsked = null;
-    if (asked == null) return;
-    boolean viz = "visualiser".equals(asked[0]);
-    boolean active = viz ? app.forge.visualiser.WallPick.active(this) : app.forge.theme.Walls.active(this);
-    if (active || asked[1] == null || asked[1].isEmpty()) return;
-    if (viz) app.forge.visualiser.WallPick.use(this, asked[1]);
-    else app.forge.theme.Walls.use(this, asked[1]);
+    SharedPreferences pending = wallpaperPick();
+    for (String kind : new String[] {"theme", "visualiser"}) {
+      String before = pending.getString(kind + "_before", null);
+      if (before == null) continue;
+      boolean visualiser = "visualiser".equals(kind);
+      int status = app.forge.look.LiveWall.state(this,
+          new ComponentName(this, visualiser ? VIZ_WALL : THEME_WALL));
+      if (status == -1) continue;
+      if (status == 0 && !before.isEmpty()) {
+        boolean restored = visualiser ? app.forge.visualiser.WallPick.use(this, before)
+            : app.forge.theme.Walls.use(this, before);
+        if (!restored) continue;
+      }
+      // Both use() methods commit before the recovery marker goes away.
+      clearWallpaperPick(kind);
+    }
   }
 
   @Override

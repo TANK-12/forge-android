@@ -20,7 +20,7 @@ public final class WallPick {
   public static boolean use(Context c, String id) {
     Presets.Preset p = Presets.find(c, id);
     if (p == null || !p.id.equals(id)) return false;
-    Prefs.store(c).edit().putString(Prefs.WALL, id).apply();
+    if (!Prefs.store(c).edit().putString(Prefs.WALL, id).commit()) return false;
     VizWidget.refreshAll(c);
     return true;
   }

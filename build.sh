@@ -27,6 +27,8 @@ trap 'rm -rf "${STAGE:?}"' EXIT
 "$HERE/../.venv/bin/python" "$HERE/../build_offline.py"
 mkdir -p "$STAGE/assets"
 cp -r "$HERE/assets/start" "$STAGE/assets/start"
+# The home uses Forge's own particles, sharing its registry and lifecycle.
+cp "$HERE/../../shared/forge_particles.js" "$STAGE/assets/start/forge_particles.js"
 # the visualiser's looks, the theme pictures and particle kinds (from Forge's
 # registries), and the visualiser's own page (host/)
 "$HERE/../.venv/bin/python" "$THEME/make_assets.py" "$STAGE/assets"

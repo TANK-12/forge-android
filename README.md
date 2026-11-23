@@ -1,6 +1,23 @@
 # Forge for Android
 
-A small Android app for Forge, the desktop tool hub. One WebView:
+A small Android app for Forge, the desktop tool hub. One WebView.
+
+**0.17:** Forge's wallpaper, particles and clock across a touch-friendly Home,
+Apps, Wallpaper, Computers and Settings shell. Search all 19 bundled tools
+and pin favourites to Home. Tablet rail, phone dock, and the same saved app
+data and computer pairings.
+
+Wallpaper offers a real animated preview **inside Forge**, separate from
+applying it to Android. Wallpaper check shows this device's model/API,
+possible system pickers, wallpaper policy, Android's selected service and
+particle/battery settings. Try another Android screen explicitly retries a
+fallback. A missing system picker remains a system limitation: a normal app
+cannot silently install a privileged live-wallpaper picker. Still pictures
+are always labelled separately. Android14 emulator application, changing
+launcher frames and cancellation after process death were checked; Emerson's
+physical BNCF tablet has not been checked. Current details: ../WIP.md.
+
+The app includes:
 
 - **Pair with your computer** (home Wi-Fi): on the computer open Forge,
   Devices, Phones, switch on the phone link and choose Show a pairing code.
@@ -70,12 +87,10 @@ updates). 0.6 installs over 0.5 by opening its APK the usual way; the
 separate Forge Visualiser and Forge Theme apps are no longer needed (set the
 wallpaper and widgets again from Forge before removing them).
 
-**Status** (0.6): pairing, opening apps, a changed certificate being refused,
-forgetting and pairing again, the Visualiser and Wallpaper tiles, 0.5 to 0.6
-by hand and 0.6 to 0.6.1 to 0.6.2 over the air (pairing kept, a damaged
-download refused) were checked in an Android 14 emulator against a test
-computer. Not yet tried on a real phone. Please report anything that looks
-wrong.
+**Status (0.17):** built and checked in headless Chrome and an Android14
+emulator; real tablet firmware/picker compatibility remains unverified.
+Forge Settings → Check for updates installs over the old version with the
+same signing key. Existing user data, pairings and preferences stay.
 
 ## Shipping a phone build
 
