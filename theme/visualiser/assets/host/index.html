@@ -73,6 +73,19 @@
       <button data-v="off">Nothing</button>
     </div>
     <p class="hint">This device's sound needs the microphone permission; Android asks it for any app that listens to what is playing. Nothing is recorded or sent anywhere.</p>
+    <h3>Sensitivity</h3>
+    <div class="chips" data-pref="sensitivity">
+      <button data-v="0.55">Gentle</button>
+      <button data-v="0.8">Calm</button>
+      <button data-v="1">Normal</button>
+      <button data-v="1.35">Lively</button>
+      <button data-v="1.75">High</button>
+    </div>
+    <div class="slider-row">
+      <input id="sensSlider" type="range" min="0.3" max="2" step="0.05" value="1" aria-label="Audio sensitivity">
+      <span id="sensVal" class="val">100%</span>
+    </div>
+    <p class="hint">Calms down loud tracks or boosts quiet ones. Used by both full screen and wallpaper.</p>
     <h3>Full screen</h3>
     <div class="chips" data-pref="fps" id="fpsChips"></div>
     <p class="hint" id="rateNote"></p>

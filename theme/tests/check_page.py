@@ -44,6 +44,7 @@ CASES = [
     ("wallpaper", "aurora", None, "wallpaper-aurora", "", 0.5625),
     ("player", "chrome", "Chrome", "player-chrome", "", 0.7),
     ("player", "halo", None, "player-120", "&fps=120&sheet=set", None),
+    ("player", "chrome", "Chrome", "player-sens", "&sens=0.8&sheet=set", 0.7),
 ]
 
 
@@ -86,7 +87,9 @@ def passes(
     pulled (calls) are not judged: Chrome's DOM dump runs only 0-3 animation
     frames in its 2.5 s, so the screenshots are the proof that looks draw."""
     tiles, webgl = want
-    fps = dict(x.split("=", 1) for x in query.split("&") if "=" in x).get("fps")
+    params = dict(x.split("=", 1) for x in query.split("&") if "=" in x)
+    fps = params.get("fps")
+    sens = params.get("sens")
     if not got or not got["canvas"]:
         return False
     if "nogl" in query:
@@ -109,6 +112,9 @@ def passes(
         and (mode != "player" or got.get("rates") == "30,60,90,120")
         # ?fps=N: the rate the Android side allows shows in the note
         and (not fps or fps in got.get("rateNote", ""))
+        # Sensitivity setting is wired and reflects saved preference (task 1532)
+        and (mode != "player" or got.get("sensChips", 0) >= 5)
+        and (not sens or got.get("sensVal") == f"{round(float(sens) * 100)}%")
     )
 
 

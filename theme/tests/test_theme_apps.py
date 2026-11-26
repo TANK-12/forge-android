@@ -289,3 +289,151 @@ def test_pause_control_has_a_distinct_key_without_changing_toggle() -> None:
         "isMusicActive"
         not in (THEME / "common/src/app/forge/look/MediaKeys.java").read_text()
     )
+
+
+def test_sensitivity_setting_is_exposed_and_soft_capped() -> None:
+    """Task 1532: Android visualiser has an adjustable sensitivity setting with soft headroom."""
+    prefs = (VIZ / "src/app/forge/visualiser/Prefs.java").read_text()
+    page = (VIZ / "assets/host/index.html").read_text()
+    js = (VIZ / "assets/host/host.js").read_text()
+    sound = (THEME / "common/src/app/forge/look/Sound.java").read_text()
+    assert 'SENSITIVITY = "sensitivity"' in prefs
+    assert 'data-pref="sensitivity"' in page
+    assert 'id="sensSlider"' in page
+    assert "phoneSound.sensitivity" in js
+    assert "softCap" in js and "softCap" in sound
+
+
+def test_sound_java_loud_music_stays_unpegged(tmp_path: Path) -> None:
+    """Compile and run Sound.java on loud synthetic music and silence (task 1532)."""
+    import subprocess
+
+    jdk = Path.home() / ".local/share/forge/android/jdk/bin"
+    if not (jdk / "javac").is_file():
+        pytest.skip("Android JDK not installed")
+    stubs = {
+        "android/os/SystemClock.java": (
+            "package android.os;\n"
+            "public final class SystemClock {\n"
+            "  public static long fakeNs = 1_000_000_000L;\n"
+            "  public static long elapsedRealtimeNanos() { return fakeNs; }\n"
+            "  public static void sleep(long ms) {}\n"
+            "}\n"
+        ),
+        "android/media/AudioFormat.java": (
+            "package android.media;\n"
+            "public final class AudioFormat {\n"
+            "  public static final int CHANNEL_IN_MONO = 16, ENCODING_PCM_16BIT = 2;\n"
+            "}\n"
+        ),
+        "android/media/MediaRecorder.java": (
+            "package android.media;\n"
+            "public final class MediaRecorder {\n"
+            "  public static final class AudioSource { public static final int MIC = 1; }\n"
+            "}\n"
+        ),
+        "android/media/AudioRecord.java": (
+            "package android.media;\n"
+            "public final class AudioRecord {\n"
+            "  public static final int STATE_INITIALIZED = 1;\n"
+            "  public AudioRecord(int a, int b, int c, int d, int e) {}\n"
+            "  public static int getMinBufferSize(int a, int b, int c) { return 4096; }\n"
+            "  public int getState() { return STATE_INITIALIZED; }\n"
+            "  public void startRecording() {}\n"
+            "  public void stop() {}\n"
+            "  public void release() {}\n"
+            "  public int read(short[] b, int o, int l) { return 0; }\n"
+            "}\n"
+        ),
+        "android/media/audiofx/Visualizer.java": (
+            "package android.media.audiofx;\n"
+            "public final class Visualizer {\n"
+            "  public static final int SUCCESS = 0, SCALING_MODE_NORMALIZED = 0;\n"
+            "  public static byte[] nextFft = new byte[1024], nextWave = new byte[1024];\n"
+            "  public Visualizer(int s) {}\n"
+            "  public static int[] getCaptureSizeRange() { return new int[] {128, 1024}; }\n"
+            "  public int setEnabled(boolean e) { return SUCCESS; }\n"
+            "  public int setCaptureSize(int n) { return SUCCESS; }\n"
+            "  public int getCaptureSize() { return 1024; }\n"
+            "  public int setScalingMode(int m) { return SUCCESS; }\n"
+            "  public int getSamplingRate() { return 44100000; }\n"
+            "  public int getFft(byte[] out) { System.arraycopy(nextFft, 0, out, 0, out.length); return SUCCESS; }\n"
+            "  public int getWaveForm(byte[] out) { System.arraycopy(nextWave, 0, out, 0, out.length); return SUCCESS; }\n"
+            "  public void release() {}\n"
+            "}\n"
+        ),
+        "SoundProbe.java": (
+            "import android.media.audiofx.Visualizer;\n"
+            "import android.os.SystemClock;\n"
+            "import app.forge.look.Sound;\n"
+            "public final class SoundProbe {\n"
+            "  public static void main(String[] args) {\n"
+            "    Sound s = new Sound();\n"
+            "    s.start(Sound.Mode.PHONE, true);\n"
+            "    int pegged = 0, total = 0, beats = 0;\n"
+            "    double lvlSum = 0, bassSum = 0;\n"
+            "    float prevBeat = 0;\n"
+            "    for (int f = 0; f < 360; f++) {\n"
+            "      double t = f / 60.0;\n"
+            "      double kick = Math.exp(-((t % 0.5) / 0.08));\n"
+            "      java.util.Arrays.fill(Visualizer.nextFft, (byte) 0);\n"
+            "      // Strong broadband loud music + 120 BPM bass kick + DC offset\n"
+            "      Visualizer.nextFft[0] = 60;\n"
+            "      for (int k = 1; k < 512; k++) {\n"
+            "        int amp = k < 6 ? (int) Math.min(120, 28 + 85 * kick) : (k < 60 ? 22 : 8);\n"
+            "        Visualizer.nextFft[2 * k] = (byte) amp;\n"
+            "      }\n"
+            "      for (int i = 0; i < 1024; i++) {\n"
+            "        Visualizer.nextWave[i] = (byte) (128 + (int) (120 * Math.sin(i * 0.1 + f)));\n"
+            "      }\n"
+            "      SystemClock.fakeNs += 16_666_667L;\n"
+            "      s.frame();\n"
+            "      for (int b = 0; b < Sound.BANDS; b++) {\n"
+            "        if (s.bands[b] >= 0.95f) pegged++;\n"
+            "        total++;\n"
+            "      }\n"
+            "      lvlSum += s.level; bassSum += s.bass;\n"
+            "      if (s.beat > 0.9f && prevBeat <= 0.9f) beats++;\n"
+            "      prevBeat = s.beat;\n"
+            "    }\n"
+            "    double lvlMean = lvlSum / 360.0, bassMean = bassSum / 360.0;\n"
+            "    // Then 2 seconds of silence\n"
+            "    java.util.Arrays.fill(Visualizer.nextFft, (byte) 0);\n"
+            "    java.util.Arrays.fill(Visualizer.nextWave, (byte) 128);\n"
+            "    for (int f = 0; f < 120; f++) {\n"
+            "      SystemClock.fakeNs += 16_666_667L;\n"
+            "      s.frame();\n"
+            "    }\n"
+            "    s.stop();\n"
+            '    System.out.printf(java.util.Locale.US, "%d %d %.4f %.4f %d %b %.4f%n",\n'
+            "        pegged, total, lvlMean, bassMean, beats, s.silent, s.level);\n"
+            "  }\n"
+            "}\n"
+        ),
+    }
+    src = tmp_path / "src"
+    cls = tmp_path / "cls"
+    cls.mkdir()
+    files = []
+    for rel, code in stubs.items():
+        p = src / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(code, encoding="utf-8")
+        files.append(str(p))
+    files.append(str(THEME / "common/src/app/forge/look/Sound.java"))
+    subprocess.run(
+        [str(jdk / "javac"), "--release", "17", "-Xlint:all", "-d", str(cls), *files],
+        check=True,
+    )
+    out = subprocess.run(
+        [str(jdk / "java"), "-cp", str(cls), "SoundProbe"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    pegged, total, lvl_mean, bass_mean, beats, silent, end_lvl = out.split()
+    assert int(pegged) == 0, f"pegged bands: {pegged}/{total}"
+    assert 0.10 < float(lvl_mean) < 0.60, f"level_mean={lvl_mean}"
+    assert 0.15 < float(bass_mean) < 0.65, f"bass_mean={bass_mean}"
+    assert 6 <= int(beats) <= 15, f"beats={beats} in 6 s"
+    assert silent == "true" and float(end_lvl) < 0.01, (silent, end_lvl)

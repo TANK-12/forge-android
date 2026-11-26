@@ -2,6 +2,13 @@
 
 A small Android app for Forge, the desktop tool hub. One WebView.
 
+**0.19:** calmer visualiser audio sensitivity (linear RMS auto-gain with soft
+headroom so loud music does not peg the bars or waveform), a new Sensitivity
+control in Visualiser Settings (Gentle to High chips plus a 30%–200% slider,
+shared with the live wallpaper), and balanced Chrome (liquid), Field, Orb,
+Warp, Night city, Northern lights, Flight and Forge orbit looks so they stay
+framed and avoid white clipping.
+
 **0.18:** a separate Pause button in both music widgets and the visualiser.
 The original play/pause toggle stays for players that support only toggling.
 Pause sends a direct command without guessing whether the player is local or
@@ -93,10 +100,11 @@ updates). 0.6 installs over 0.5 by opening its APK the usual way; the
 separate Forge Visualiser and Forge Theme apps are no longer needed (set the
 wallpaper and widgets again from Forge before removing them).
 
-**Status (0.18):** built and checked in headless Chrome and an Android14
-emulator; real tablet firmware/picker compatibility remains unverified.
-Forge Settings → Check for updates installs over the old version with the
-same signing key. Existing user data, pairings and preferences stay.
+**Status (0.19):** built and checked in headless Chrome (real APK assets and
+visualiser page with recorded loud-music frames) and JVM Sound.java tests; live
+playback on Emerson's physical tablet remains unverified. Forge Settings ->
+Check for updates installs over the old version with the same signing key.
+Existing user data, pairings and preferences stay.
 
 ## Shipping a phone build
 

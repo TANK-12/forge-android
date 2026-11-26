@@ -2,7 +2,7 @@
 // page, a synthetic beat and prefs from the query; never shipped in an APK.
 (() => {
   const q = new URLSearchParams(location.search);
-  const prefs = { preset: q.get("preset") || "", wall: q.get("preset") || "", source: "phone", fps: "60", scale: "1", wallFps: "30", wallScale: "0.75", mic: q.get("mic") !== "0" };
+  const prefs = { preset: q.get("preset") || "", wall: q.get("preset") || "", source: "phone", fps: "60", scale: "1", wallFps: "30", wallScale: "0.75", sensitivity: q.get("sens") || "1", mic: q.get("mic") !== "0" };
   const errs = [];
   // ?nogl=1: a screen without WebGL 2 (as the emulator without a GPU)
   if (q.get("nogl")) {
@@ -30,7 +30,7 @@
     fps() { return Number(q.get("fps")) || 30; }, why() { return ""; }, status() { return "Listening to this device's own sound (test)"; },
     prefs() { return JSON.stringify(prefs); }, set(k, v) { prefs[k] = v; }, key() {}, source(m) { prefs.source = m; }, wallpaper() {}, close() {},
   };
-  window.__check = () => ({ errs, calls, canvas: !!document.querySelector("canvas"), name: (document.getElementById("name") || {}).textContent, tiles: document.querySelectorAll(".tile").length, off: document.querySelectorAll(".tile.off").length, note: (document.getElementById("note") || {}).textContent || "", rates: Array.from(document.querySelectorAll("#fpsChips button"), (b) => b.dataset.v).join(","), rateNote: (document.getElementById("rateNote") || {}).textContent || "", px: (() => { const c = document.querySelector("canvas"); return c && c.clientWidth ? +(c.width / (c.clientWidth * (window.devicePixelRatio || 1))).toFixed(3) : 0; })() });
+  window.__check = () => ({ errs, calls, canvas: !!document.querySelector("canvas"), name: (document.getElementById("name") || {}).textContent, tiles: document.querySelectorAll(".tile").length, off: document.querySelectorAll(".tile.off").length, note: (document.getElementById("note") || {}).textContent || "", rates: Array.from(document.querySelectorAll("#fpsChips button"), (b) => b.dataset.v).join(","), rateNote: (document.getElementById("rateNote") || {}).textContent || "", sensVal: (document.getElementById("sensVal") || {}).textContent || "", sensChips: document.querySelectorAll('[data-pref="sensitivity"] button').length, px: (() => { const c = document.querySelector("canvas"); return c && c.clientWidth ? +(c.width / (c.clientWidth * (window.devicePixelRatio || 1))).toFixed(3) : 0; })() });
   addEventListener("load", () => {
     const open = q.get("sheet");
     if (open) setTimeout(() => document.getElementById(open + "Btn").click(), 800);

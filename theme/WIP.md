@@ -34,6 +34,22 @@ about; what is next.
 - Particles.java: all 19 kinds step and draw without NaN or per-frame
   allocation in a JVM sweep with a stub canvas (helper's test, session 1).
 
+## Calmer audio sensitivity and maxed-out looks (Relay task 1532, 2026-11-26)
+
+- **Audio pipeline (`Sound.java`, `Prefs.java`, `host.js`, `index.html`, `host.css`)**:
+  - Replaced `Sound.java`'s log-dB (`(db + 48) / 44`) + `MAX`-across-bins + post-clamp per-frame `peak` auto-gain with linear RMS across bins (skipping DC bin 0 and dividing `mags[0]` by `128f`), gentle linear high-frequency tilt (`1 + 2.3 * b / 63`), pre-clamp `dt`-based auto-gain with noise floor (`0.02`), soft-knee ceiling (`softCap`, linear to `0.65` then smooth `tanh` rolloff), calmer waveform headroom (`wavePeak` targeting `0.72` by `dt`), `Mic` FFT normalized by `256f` (was `64f`), and squared-energy beat detection. `stop()` resets `sens`, `wavePeak`, `bassAvg`, and `lastNs` while still setting `mode = Mode.OFF`.
+  - Added a persistent **Sensitivity** control (`Prefs.SENSITIVITY = "sensitivity"`, default `"1"`) in Settings: 5 chips (`Gentle` 0.55, `Calm` 0.8, `Normal` 1, `Lively` 1.35, `High` 1.75) synced with a 30%–200% slider, shared by both the full-screen player and the live wallpaper (`prefsChanged()`), with `softCap` headroom in `PhoneSound`.
+- **Maxed-out visualiser modes (`shared/visualiser/looks/`)**:
+  - `chrome.js` (liquid): framed against `min(uRes.x, uRes.y)` with camera at `5.1` so portrait screens no longer clip the drop or hide its moons; softer ripple frequencies + soft input shaping + safer raymarch step (`0.52`) to prevent SDF overstepping/crumpling; calmer moon pull and filmic highlights.
+  - `field.js`, `orb.js`, `warp.js`: scaled additive point/streak brightness (and density scaling in `orb.js`) with soft compression to eliminate solid `#ffffff` clipping on loud audio.
+  - `skyline.js`, `flight.js`, `aurora.js`, `classic.js`: balanced window lighting contrast, soft-capped ridge height, stronger aurora tone-mapping (`0.52`), and proportional orbit sizing (`p.size * 0.75`) so `Forge orbit` stays inside short frames while keeping the desktop Size slider responsive.
+- **Measured before/after on the same loud audio** (`outputs/checks/2026-11-26-1532-android-viz/{before,after-final}/metrics.json`):
+  - Loud real EDM (`Riot.mp3`, 10 s, 60 fps): `band_mean` `0.590 -> 0.163`, `band >= 0.85` `2.34% -> 0.00%`, `level_mean` `0.590 -> 0.302`, `bass_mean` `0.756 -> 0.353`, `wave >= 0.95` `0.32% -> 0.00%`, beats `7 -> 21` (tracks 128 BPM cleanly).
+  - Loud synthetic song (`sound.py`, 8 s): `band >= 0.85` `8.67% -> 0.00%`, `bass_mean` `0.800 -> 0.408`, `wave >= 0.95` `1.80% -> 0.00%`, beats `7 -> 15` (120 BPM). Silence rests at `0.0` (`silent_pct = 100%`).
+  - Canvas white-clipping on loud audio: `field` `4.03% -> 0.00%`, `mono-field` `4.44% -> 0.00%`, `orb` `1.03% -> 0.00%`, `violet-orb` `1.98% -> 0.00%`, `warp` `0.76% -> 0.00%`.
+- **Verified**: `forge_check.py` clean + `phone/theme/tests` 20 passed (incl. JVM `Sound.java` `-Xlint:all` loud/silence probe); `phone/theme/tests/check_page.py` 12/12 passed; `apps/visualiser` pytest 12 passed, Node tests 37 passed, `check_ui.py` 37/37 passed; `tests/test_desktop_visualiser.py` 7 passed; `tests/test_forge_loopback.py` 25 passed; fresh-context critic review (3 findings: collage em-dash font fixed, `classic.js` orbit Size dead zone fixed with proportional `0.75`, `warp.js` brightness lifted slightly). Shipped in Forge for Android 0.19 (versionCode 19).
+- **Not verified**: live playback on Emerson's physical tablet (`Visualizer` session 0 + real microphone).
+
 ## Each look's own scale and the four new looks (Relay task 1308, 2026-11-18)
 
 - `host.js` now multiplies the user's sharpness (`scale` / `wallScale`) by

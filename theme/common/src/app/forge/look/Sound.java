@@ -50,7 +50,7 @@ public final class Sound {
   private final float[] raw = new float[BANDS];
   private float binHz = 44100f / 1024f;
   private long lastNs;
-  private float bassAvg, quietFor = 1f, sinceBeat = 1f, peak = 0.3f;
+  private float bassAvg, quietFor = 1f, sinceBeat = 1f, sens = 0.08f, wavePeak = 0.25f;
   private float demoT;
 
   public synchronized Mode mode() { return mode; }
@@ -115,6 +115,10 @@ public final class Sound {
     }
     mode = Mode.OFF;
     status = "Not listening";
+    lastNs = 0;
+    sens = 0.08f;
+    wavePeak = 0.25f;
+    bassAvg = 0f;
   }
 
   private void releaseVis() {
@@ -143,10 +147,10 @@ public final class Sound {
       }
       if (got) {
         int n = vis.getCaptureSize();
-        fromVisualizer(n);
+        fromVisualizer(n, dt);
       }
     } else if (mic != null) {
-      got = mic.read(mags, wave);
+      got = mic.read(mags, wave, dt);
     } else if (mode == Mode.DEMO) {
       demo(dt);
       got = true;
@@ -155,60 +159,85 @@ public final class Sound {
       java.util.Arrays.fill(mags, 0f);
       java.util.Arrays.fill(wave, 0f);
     }
-    if (mode != Mode.DEMO) toBands();
+    if (mode != Mode.DEMO) toBands(dt);
     smooth(dt);
   }
 
   // Visualizer bytes: fft[0] is the DC part, fft[1] the top bin, then
   // (real, imaginary) pairs; the wave is unsigned 8-bit around 128.
-  private void fromVisualizer(int n) {
+  private void fromVisualizer(int n, float dt) {
     int half = Math.min(512, n / 2);
-    mags[0] = Math.abs(fftBytes[0]);
+    mags[0] = Math.abs(fftBytes[0]) / 128f;
     for (int k = 1; k < half; k++) {
       float re = fftBytes[2 * k], im = fftBytes[2 * k + 1];
       mags[k] = (float) Math.sqrt(re * re + im * im) / 128f;
     }
     mags[half] = Math.abs(fftBytes[1]) / 128f;
     int step = Math.max(1, n / WAVE);
+    float pk = 0f;
     for (int i = 0; i < WAVE; i++) {
       int j = Math.min(n - 1, i * step);
-      wave[i] = ((waveBytes[j] & 0xff) - 128) / 128f;
+      float s = ((waveBytes[j] & 0xff) - 128) / 128f;
+      wave[i] = s;
+      float a = Math.abs(s);
+      if (a > pk) pk = a;
     }
+    // Gentle time-based headroom so normalized output does not pin the scope at +/-1.
+    wavePeak = Math.max(0.12f, Math.max(pk, wavePeak * (float) Math.pow(0.75, dt)));
+    float wScale = pk > 0.01f ? Math.min(1.2f, 0.72f / wavePeak) : 0f;
+    for (int i = 0; i < WAVE; i++) wave[i] = Math.max(-1f, Math.min(1f, wave[i] * wScale));
   }
 
-  // Magnitudes to 64 pitch-spaced bands, in decibels mapped to 0..1, with a
-  // gentle lift for the highs so a normal song fills the picture evenly.
-  private void toBands() {
+  // Magnitudes to 64 pitch-spaced bands using linear RMS (matching desktop
+  // viz_core.js) with pre-clamp time-based auto-gain and a soft ceiling so
+  // loud music breathes instead of pegging every band near 1.
+  private void toBands(float dt) {
     float lo = (float) Math.log(MIN_HZ), hi = (float) Math.log(MAX_HZ);
-    float top = 0;
+    float loudest = 0f;
     for (int b = 0; b < BANDS; b++) {
       float f0 = (float) Math.exp(lo + (hi - lo) * b / BANDS);
       float f1 = (float) Math.exp(lo + (hi - lo) * (b + 1) / BANDS);
       float k0 = f0 / binHz, k1 = f1 / binHz;
       float m;
-      if (k1 - k0 < 1f) {
-        // narrower than one bin: read between the two nearest bins
-        float k = (k0 + k1) / 2f;
+      if (k1 - k0 < 1.5f) {
+        // narrower than a bin or so: interpolate between positive-frequency bins (skip DC bin 0)
+        float k = Math.max(1f, (k0 + k1) / 2f);
         int i = Math.min(511, (int) k);
         float t = k - i;
-        m = mags[i] * (1 - t) + mags[Math.min(512, i + 1)] * t;
+        m = mags[i] * (1f - t) + mags[Math.min(512, i + 1)] * t;
       } else {
-        m = 0;
-        for (int k = (int) k0; k <= Math.min(512, (int) k1); k++) m = Math.max(m, mags[k]);
+        float sumSq = 0f;
+        int count = 0;
+        int start = Math.max(1, (int) Math.floor(k0));
+        int end = Math.min(512, (int) Math.ceil(k1));
+        for (int k = start; k <= end; k++) {
+          float v = mags[k];
+          sumSq += v * v;
+          count++;
+        }
+        m = (float) Math.sqrt(sumSq / Math.max(1, count));
       }
-      float tilt = 1f + 1.6f * b / BANDS;
-      float db = 20f * (float) Math.log10(m * tilt + 1e-5f);
-      raw[b] = clamp((db + 48f) / 44f);
-      top = Math.max(top, raw[b]);
+      // gentle lift for the highs so the spectrum stays balanced without exaggerating noise
+      float tilt = 1f + 2.3f * b / (BANDS - 1);
+      float v = m * tilt;
+      raw[b] = v;
+      if (v > loudest) loudest = v;
     }
-    // a slow automatic gain so quiet and loud songs both fill the range
-    peak = Math.max(top, peak * 0.995f);
-    float gain = peak > 0.15f ? 0.92f / peak : 1f;
-    for (int b = 0; b < BANDS; b++) raw[b] = clamp(raw[b] * gain);
+    // Auto-gain in linear domain BEFORE clamping, decaying by time (not by frame rate).
+    // Floor keeps quiet room noise or faint hum from being amplified to full height.
+    sens = Math.max(0.02f, Math.max(loudest, sens * (float) Math.pow(0.72, dt)));
+    if (loudest < 0.004f) {
+      java.util.Arrays.fill(raw, 0f);
+      return;
+    }
+    float inv = 0.78f / sens;
+    for (int b = 0; b < BANDS; b++) {
+      raw[b] = softCap(raw[b] * inv);
+    }
   }
 
   private void smooth(float dt) {
-    float up = 1f - (float) Math.exp(-dt / 0.03f), down = 1f - (float) Math.exp(-dt / 0.25f);
+    float up = 1f - (float) Math.exp(-dt / 0.025f), down = 1f - (float) Math.exp(-dt / 0.18f);
     float sb = 0, sm = 0, st = 0, sl = 0;
     for (int b = 0; b < BANDS; b++) {
       float v = bands[b], r = raw[b];
@@ -217,21 +246,23 @@ public final class Sound {
       sl += v;
       if (b < 12) sb += v; else if (b < 40) sm += v; else st += v;
     }
-    level = sl / BANDS;
+    // Average across all 64 linear-RMS bands is naturally ~0.12-0.24 on loud music;
+    // gentle lift puts level around 0.25-0.42 (matching desktop viz_core.js) with headroom.
+    level = softCap((sl / BANDS) * 1.85f);
     bass = sb / 12f;
     mid = sm / 28f;
     treble = st / 24f;
-    // beat: the low bands jumping well above their recent average
-    float lowNow = 0;
-    for (int b = 0; b < 9; b++) lowNow += raw[b];
-    lowNow /= 9f;
+    // beat: squared low-band energy jumping cleanly above its recent average
+    float bassE = 0f;
+    for (int b = 0; b < 9; b++) bassE += raw[b] * raw[b];
+    bassE /= 9f;
     sinceBeat += dt;
     beat = Math.max(0f, beat - dt / 0.3f);
-    if (lowNow > bassAvg * 1.4f && lowNow > 0.3f && sinceBeat > 0.2f) {
+    if (bassE > bassAvg * 1.65f && bassE > 0.045f && sinceBeat > 0.28f && level > 0.06f) {
       beat = 1f;
       sinceBeat = 0f;
     }
-    bassAvg += (lowNow - bassAvg) * (1f - (float) Math.exp(-dt / 1.0f));
+    bassAvg += (bassE - bassAvg) * (1f - (float) Math.exp(-dt / 0.9f));
     quietFor = level < 0.03f ? quietFor + dt : 0f;
     silent = quietFor > 0.5f;
   }
@@ -246,16 +277,23 @@ public final class Sound {
     float bar = (demoT / (beatLen * 4)) % 4f;
     for (int b = 0; b < BANDS; b++) {
       float x = b / (float) BANDS;
-      float body = 0.55f * (float) Math.exp(-x * 3.2f) * (0.6f + 0.4f * kick);
-      float melody = 0.35f * (float) Math.exp(-Math.pow((x - 0.35f - 0.08f * (int) bar) * 9f, 2));
-      float air = 0.18f * (0.5f + 0.5f * (float) Math.sin(demoT * 1.3f + b * 0.4f)) * x;
-      raw[b] = clamp(body + kick * 0.45f * (float) Math.exp(-x * 10f) + melody + air);
+      float body = 0.42f * (float) Math.exp(-x * 3.2f) * (0.6f + 0.4f * kick);
+      float melody = 0.28f * (float) Math.exp(-Math.pow((x - 0.35f - 0.08f * (int) bar) * 9f, 2));
+      float air = 0.14f * (0.5f + 0.5f * (float) Math.sin(demoT * 1.3f + b * 0.4f)) * x;
+      raw[b] = softCap(body + kick * 0.36f * (float) Math.exp(-x * 10f) + melody + air);
     }
     for (int i = 0; i < WAVE; i++) {
       float t = i / (float) WAVE;
-      wave[i] = 0.55f * (float) Math.sin(t * 6.283f * 3f + demoT * 2f) * (0.4f + 0.6f * kick)
-          + 0.2f * (float) Math.sin(t * 6.283f * 17f + demoT * 5f);
+      wave[i] = 0.45f * (float) Math.sin(t * 6.283f * 3f + demoT * 2f) * (0.4f + 0.6f * kick)
+          + 0.16f * (float) Math.sin(t * 6.283f * 17f + demoT * 5f);
     }
+  }
+
+  /** Linear up to 0.65, then smooth rolloff toward 1.0 so loud peaks keep shape. */
+  static float softCap(float v) {
+    if (v <= 0f) return 0f;
+    if (v <= 0.65f) return v;
+    return 0.65f + 0.35f * (float) Math.tanh((v - 0.65f) / 0.35f);
   }
 
   static float clamp(float v) {
@@ -314,7 +352,7 @@ public final class Sound {
     }
 
     /** Magnitudes of the latest 1024 samples (Hann window) and its wave. */
-    boolean read(float[] mags, float[] wave) {
+    boolean read(float[] mags, float[] wave, float dt) {
       synchronized (this) {
         for (int i = 0; i < 1024; i++) {
           float s = ring[(pos + i) & 1023] / 32768f;
@@ -325,14 +363,16 @@ public final class Sound {
       }
       float pk = 0;
       for (int i = 0; i < WAVE; i++) pk = Math.max(pk, Math.abs(re[512 + i - 256]));
-      wavePeak = Math.max(pk, wavePeak * 0.98f);
+      wavePeak = Math.max(0.05f, Math.max(pk, wavePeak * (float) Math.pow(0.75, dt)));
+      float wScale = pk > 0.004f ? Math.min(12f, 0.72f / wavePeak) : 0f;
       for (int i = 0; i < WAVE; i++) {
         float w = re[i + 256];
-        wave[i] = Math.max(-1f, Math.min(1f, w / Math.max(0.02f, wavePeak)));
+        wave[i] = Math.max(-1f, Math.min(1f, w * wScale));
       }
       fft(re, im);
+      // 1024-point Hann-windowed full-scale sine has bin magnitude ~256
       for (int k = 0; k <= 512; k++) {
-        mags[k] = (float) Math.sqrt(re[k] * re[k] + im[k] * im[k]) / 64f;
+        mags[k] = (float) Math.sqrt(re[k] * re[k] + im[k] * im[k]) / 256f;
       }
       return true;
     }

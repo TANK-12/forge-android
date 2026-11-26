@@ -20,11 +20,17 @@
   const fpsKey = wall ? "wallFps" : "fps";
   const scaleKey = wall ? "wallScale" : "scale";
 
+  // Linear up to 0.72, then smooth rolloff toward 1 so turning sensitivity up
+  // keeps musical contrast instead of pinning every value flat against the ceiling.
+  const softCap = (v) => (v <= 0 ? 0 : v <= 0.72 ? v : 0.72 + 0.28 * Math.tanh((v - 0.72) / 0.28));
+  const softWave = (v) => Math.sign(v) * softCap(Math.abs(v));
+
   // The analyser viz_core's Player asks for a frame each time it draws; this
-  // one reads the Android side's bytes and applies the preset's gain and
-  // smoothing the way viz_core's own analyser does.
+  // one reads the Android side's bytes and applies the user's sensitivity and
+  // the preset's gain and smoothing the way viz_core's own analyser does.
   class PhoneSound {
     constructor() {
+      this.sensitivity = 1;
       this.out = { t: 0, dt: 0, bands: new Float32Array(NB), wave: new Float32Array(WAVE),
         level: 0, bass: 0, mid: 0, treble: 0, beat: 0, beats: 0, silent: true };
     }
@@ -40,9 +46,12 @@
       }
     }
     frame(t, dt, audio = {}) {
-      const o = this.out, raw = this.read(), gain = Number(audio.gain) || 1;
-      const smooth = Math.min(0.95, Math.max(0, audio.smoothing == null ? 0.6 : Number(audio.smoothing)));
-      const fall = Math.pow(smooth, dt * 60), rise = 1 - Math.pow(0.3, dt * 60);
+      const o = this.out, raw = this.read();
+      const sens = Math.max(0.25, Math.min(2.5, Number(this.sensitivity) || 1));
+      const gain = (Number(audio.gain) || 1) * sens;
+      // Sound.java already smooths moderately; blend lightly so presets still shape decay.
+      const smooth = Math.min(0.92, Math.max(0, (audio.smoothing == null ? 0.6 : Number(audio.smoothing)) * 0.85));
+      const fall = Math.pow(smooth, dt * 60), rise = 1 - Math.pow(0.25, dt * 60);
       o.t = t; o.dt = dt;
       if (raw.length < SIZE) {
         for (let b = 0; b < NB; b++) o.bands[b] *= fall;
@@ -53,13 +62,17 @@
         return o;
       }
       for (let b = 0; b < NB; b++) {
-        const v = Math.min(1, (raw.charCodeAt(b) / 255) * gain), p = o.bands[b];
+        const v = softCap((raw.charCodeAt(b) / 255) * gain), p = o.bands[b];
         o.bands[b] = v > p ? p + (v - p) * rise : Math.max(v, p * fall);
       }
-      const wg = Math.min(1.6, gain);
-      for (let i = 0; i < WAVE; i++) o.wave[i] = Math.max(-1, Math.min(1, ((raw.charCodeAt(NB + i) - 128) / 127) * wg));
-      const k = NB + WAVE, u = (i) => Math.min(1, (raw.charCodeAt(k + i) / 255) * gain);
-      o.level = u(0); o.bass = u(1); o.mid = u(2); o.treble = u(3);
+      const wg = Math.min(1.5, gain);
+      for (let i = 0; i < WAVE; i++) o.wave[i] = softWave(((raw.charCodeAt(NB + i) - 128) / 127) * wg);
+      const k = NB + WAVE, u = (i) => softCap((raw.charCodeAt(k + i) / 255) * gain);
+      const ease = 1 - Math.pow(0.75, dt * 60);
+      o.level += (u(0) - o.level) * ease;
+      o.bass += (u(1) - o.bass) * ease;
+      o.mid += (u(2) - o.mid) * ease;
+      o.treble += (u(3) - o.treble) * ease;
       const beat = raw.charCodeAt(k + 4) / 255;
       if (beat > 0.9 && o.beat <= 0.9) o.beats++;
       o.beat = beat;
@@ -68,7 +81,8 @@
     }
   }
 
-  const player = new ForgeViz.Player($("stage"), { analyser: new PhoneSound(), fps: 30, onError: broke });
+  const phoneSound = new PhoneSound();
+  const player = new ForgeViz.Player($("stage"), { analyser: phoneSound, fps: 30, onError: broke });
   let presets = [], prefs = {}, current = null, still = false, paused = document.visibilityState === "hidden";
   let engines = {}; // look id -> "2d" | "webgl", from looks.json
   let shares = {}; // look id -> share of screen pixels it draws at (looks.json scale)
@@ -104,6 +118,13 @@
   const scale = () => {
     const share = Number(current && shares[current.look]) || 1;
     player.setScale(share * (Number(prefs[scaleKey]) || (wall ? 0.75 : 1)));
+  };
+  const applySensitivity = () => {
+    const v = Math.max(0.3, Math.min(2, Number(prefs.sensitivity) || 1));
+    phoneSound.sensitivity = v;
+    const sl = $("sensSlider"), out = $("sensVal");
+    if (sl) sl.value = String(v);
+    if (out) out.textContent = `${Math.round(v * 100)}%`;
   };
 
   function note(text) {
@@ -240,9 +261,16 @@
 
   function syncChips() {
     for (const box of document.querySelectorAll(".chips")) {
-      const v = prefs[box.dataset.pref];
-      for (const b of box.querySelectorAll("button")) b.classList.toggle("on", b.dataset.v === v);
+      const k = box.dataset.pref;
+      const v = prefs[k];
+      for (const b of box.querySelectorAll("button")) {
+        const match = k === "sensitivity"
+          ? Math.abs((Number(v) || 1) - Number(b.dataset.v)) < 0.015
+          : b.dataset.v === v;
+        b.classList.toggle("on", match);
+      }
     }
+    applySensitivity();
   }
 
   function buildLooks() {
@@ -320,9 +348,21 @@
         else save(k, b.dataset.v);
         if (k === scaleKey) scale();
         if (k === fpsKey) pace();
+        if (k === "sensitivity") applySensitivity();
         syncChips();
         status();
       });
+    }
+    const sensSlider = $("sensSlider");
+    if (sensSlider) {
+      const onSens = (persist) => {
+        const v = String(Number(sensSlider.value) || 1);
+        prefs.sensitivity = v;
+        if (persist) save("sensitivity", v);
+        syncChips();
+      };
+      sensSlider.addEventListener("input", () => onSens(false));
+      sensSlider.addEventListener("change", () => onSens(true));
     }
     // a tap on the look shows the controls or hides them; a swipe changes look
     let down = null;
@@ -354,6 +394,7 @@
       const old = prefs;
       prefs = readPrefs();
       scale();
+      applySensitivity();
       if (presets.length && prefs[presetKey] && prefs[presetKey] !== old[presetKey]) show(prefs[presetKey]);
       if (!wall) { syncChips(); label(); status(); }
     },
@@ -372,6 +413,7 @@
     document.body.classList.add(wall ? "wallpaper" : "player");
     prefs = readPrefs();
     scale();
+    applySensitivity();
     try {
       for (const look of await ForgeViz.catalog()) {
         engines[look.id] = look.engine;

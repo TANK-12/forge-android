@@ -19,8 +19,9 @@ import org.json.JSONObject;
 final class Prefs {
   static final String PRESET = "preset", WALL = "wall", SOURCE = "source";
   static final String FPS = "fps", SCALE = "scale", WALL_FPS = "wallFps", WALL_SCALE = "wallScale";
+  static final String SENSITIVITY = "sensitivity";
   private static final List<String> KEYS =
-      Arrays.asList(PRESET, WALL, SOURCE, FPS, SCALE, WALL_FPS, WALL_SCALE);
+      Arrays.asList(PRESET, WALL, SOURCE, FPS, SCALE, WALL_FPS, WALL_SCALE, SENSITIVITY);
   private static final Map<String, String> DEFAULTS = new HashMap<>();
 
   static {
@@ -31,6 +32,7 @@ final class Prefs {
     DEFAULTS.put(SCALE, "1");
     DEFAULTS.put(WALL_FPS, "30");
     DEFAULTS.put(WALL_SCALE, "0.75");
+    DEFAULTS.put(SENSITIVITY, "1");
   }
 
   private Prefs() {}
