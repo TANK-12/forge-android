@@ -629,28 +629,34 @@ public class Main extends Activity {
     return bar;
   }
 
-  /** Switch the WebView to a saved computer (`halo` or `heat`), probing its LAN & Tailscale addresses. */
   void switchComputer(JSONObject entry) {
+    switchComputer(entry, "#relay");
+  }
+
+  /** Switch the WebView to a saved computer (`halo` or `heat`), probing its LAN & Tailscale addresses. */
+  void switchComputer(JSONObject entry, final String targetHash) {
     if (entry == null) return;
     String curHost = entry.optString("host");
     String pin = entry.optString("pin");
     String tok = token(curHost);
     List<String> candidates = new ArrayList<>();
-    if (!curHost.isEmpty()) candidates.add(curHost);
+    if (!curHost.isEmpty() && !curHost.startsWith("169.254.")) candidates.add(curHost);
     JSONArray alts = entry.optJSONArray("alts");
     if (alts != null) {
       for (int i = 0; i < alts.length(); i++) {
         String a = alts.optString(i);
-        if (!a.isEmpty() && !candidates.contains(a)) candidates.add(a);
+        if (!a.isEmpty() && !a.startsWith("169.254.") && !candidates.contains(a)) candidates.add(a);
       }
     }
+    if (candidates.isEmpty() && !curHost.isEmpty()) candidates.add(curHost);
     Toast.makeText(this, "Switching to " + (entry.optString("name").isEmpty() ? curHost : entry.optString("name")) + "…", Toast.LENGTH_SHORT).show();
+    final String navHash = (targetHash == null || targetHash.isEmpty()) ? "#relay" : targetHash;
     new Thread(() -> {
       String live = Link.findPinned(candidates, pin);
-      final String chosen = live != null ? live : curHost;
+      final String chosen = live != null ? live : candidates.get(0);
       runOnUiThread(() -> {
         if (!chosen.equals(curHost) && !tok.isEmpty()) moveComputer(curHost, chosen, tok);
-        web.loadUrl(Link.origin(chosen) + "/#relay");
+        web.loadUrl(Link.origin(chosen) + "/" + navHash);
       });
     }, "forge-switch-pc").start();
   }
@@ -959,6 +965,11 @@ public class Main extends Activity {
                     if (cand != null && !validHosts.contains(cand)) validHosts.add(cand);
                   }
                 }
+                List<String> nonLinkLocal = new ArrayList<>();
+                for (String vh : validHosts) {
+                  if (!vh.startsWith("169.254.")) nonLinkLocal.add(vh);
+                }
+                if (!nonLinkLocal.isEmpty()) validHosts = nonLinkLocal;
                 String usePin = (p.optBoolean("self") || pid.equals(primaryId)) ? ol.fingerprint : ppin;
                 if (validHosts.isEmpty() || usePin.isEmpty()) continue;
                 String mainHost = validHosts.get(0);
@@ -1014,6 +1025,20 @@ public class Main extends Activity {
   }
 
   void forget(String host) {
+    JSONObject existing = computer(host);
+    final List<String> allHosts = new ArrayList<>();
+    allHosts.add(host);
+    if (existing != null) {
+      String primary = existing.optString("host");
+      if (!primary.isEmpty() && !allHosts.contains(primary)) allHosts.add(primary);
+      JSONArray alts = existing.optJSONArray("alts");
+      if (alts != null) {
+        for (int i = 0; i < alts.length(); i++) {
+          String a = alts.optString(i);
+          if (!a.isEmpty() && !allHosts.contains(a)) allHosts.add(a);
+        }
+      }
+    }
     String pin = pinFor(host), token = token(host);
     if (pin.isEmpty()) return;
     new Thread(() -> {
@@ -1023,9 +1048,14 @@ public class Main extends Activity {
         // the computer is away: it still lists this device until Forget there
       }
       runOnUiThread(() -> {
-        dropToken(host);
-        dropComputer(host);
-        JobsWidget.forget(this, host);
+        for (String h : allHosts) {
+          dropToken(h);
+          JobsWidget.forget(this, h);
+        }
+        dropComputer(allHosts.get(0));
+        if (existing != null && !existing.optString("host").isEmpty()) {
+          dropComputer(existing.optString("host"));
+        }
         JobsWidget.drawAll(this);
         JobsWidget.plan(this);
         web.clearSslPreferences(); // no proceed decision for the old certificate stays
@@ -1202,12 +1232,19 @@ public class Main extends Activity {
 
   /** The pairing with `old` now lives at `at`: its entry (in its place), token and widgets. */
   void moveComputer(String old, String at, String token) {
+    boolean keepOldAlt = false;
     synchronized (this) {
       JSONArray list = computers(), out = new JSONArray();
       for (int i = 0; i < list.length(); i++) {
         JSONObject c = list.optJSONObject(i);
         if (c == null) continue;
         if (old.equals(c.optString("host"))) {
+          JSONArray alts = c.optJSONArray("alts");
+          if (alts != null) {
+            for (int j = 0; j < alts.length(); j++) {
+              if (old.equals(alts.optString(j))) keepOldAlt = true;
+            }
+          }
           try {
             c.put("host", at);
           } catch (JSONException e) {
@@ -1224,8 +1261,9 @@ public class Main extends Activity {
       cm.setCookie(Link.origin(at), Link.COOKIE + "=" + token
           + "; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=15552000");
     }
-    dropToken(old);
+    if (!keepOldAlt) dropToken(old);
     JobsWidget.moved(this, old, at, token);
+    if (keepOldAlt && !token.isEmpty()) JobsWidget.keepToken(this, old, token);
   }
 
   /** This device's IPv4 address on the Wi-Fi (or a cable) and that network. */
@@ -1440,9 +1478,15 @@ public class Main extends Activity {
           send(host);
         } else {
           String to = uri.getQueryParameter("to");
-          // the computer's own Forge page, at a section of it (#remote, #files, #send)
+          // the computer's own Forge page, at a section of it (#remote, #files, #send, #relay, #apps)
           String hash = to != null && to.matches("[a-z]{1,12}") ? "#" + to : "";
-          view.loadUrl(Link.origin(host) + "/" + hash);
+          JSONObject targetPc = computer(host);
+          JSONArray targetAlts = targetPc != null ? targetPc.optJSONArray("alts") : null;
+          if (targetAlts != null && targetAlts.length() > 1) {
+            switchComputer(targetPc, hash);
+          } else {
+            view.loadUrl(Link.origin(host) + "/" + hash);
+          }
         }
         return true;
       }
