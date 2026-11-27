@@ -104,6 +104,7 @@ public class Main extends Activity {
   boolean pageGone;
   WebView web;
   LinearLayout bar;
+  LinearLayout barSwitch;
   TextView barTitle;
   final List<Uri> sharing = new ArrayList<>();
   SharedPreferences prefs;
@@ -172,7 +173,9 @@ public class Main extends Activity {
     if ((intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return null;
     String host = intent.getStringExtra("host");
     intent.setAction(Intent.ACTION_MAIN); // once: not again when the activity is made again
-    return computer(host) == null ? null : Link.origin(host) + "/#jobs";
+    JSONObject c = computer(host);
+    if (c == null) return null;
+    return Link.origin(host) + (c.optBoolean("owner") ? "/#relay" : "/#jobs");
   }
 
   // -- the jobs widget (Relay task 1301) -------------------------------------------
@@ -615,11 +618,41 @@ public class Main extends Activity {
     barTitle.setPadding(dp(8), 0, dp(8), 0);
     TextView reload = barButton("↻", "Reload");
     reload.setOnClickListener(v -> web.reload());
+    barSwitch = new LinearLayout(this);
+    barSwitch.setOrientation(LinearLayout.HORIZONTAL);
+    barSwitch.setGravity(Gravity.CENTER_VERTICAL);
     bar.addView(home, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
     bar.addView(barTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+    bar.addView(barSwitch, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
     bar.addView(reload, new LinearLayout.LayoutParams(dp(56), ViewGroup.LayoutParams.MATCH_PARENT));
     bar.setVisibility(View.GONE);
     return bar;
+  }
+
+  /** Switch the WebView to a saved computer (`halo` or `heat`), probing its LAN & Tailscale addresses. */
+  void switchComputer(JSONObject entry) {
+    if (entry == null) return;
+    String curHost = entry.optString("host");
+    String pin = entry.optString("pin");
+    String tok = token(curHost);
+    List<String> candidates = new ArrayList<>();
+    if (!curHost.isEmpty()) candidates.add(curHost);
+    JSONArray alts = entry.optJSONArray("alts");
+    if (alts != null) {
+      for (int i = 0; i < alts.length(); i++) {
+        String a = alts.optString(i);
+        if (!a.isEmpty() && !candidates.contains(a)) candidates.add(a);
+      }
+    }
+    Toast.makeText(this, "Switching to " + (entry.optString("name").isEmpty() ? curHost : entry.optString("name")) + "…", Toast.LENGTH_SHORT).show();
+    new Thread(() -> {
+      String live = Link.findPinned(candidates, pin);
+      final String chosen = live != null ? live : curHost;
+      runOnUiThread(() -> {
+        if (!chosen.equals(curHost) && !tok.isEmpty()) moveComputer(curHost, chosen, tok);
+        web.loadUrl(Link.origin(chosen) + "/#relay");
+      });
+    }, "forge-switch-pc").start();
   }
 
   TextView barButton(String text, String about) {
@@ -652,6 +685,29 @@ public class Main extends Activity {
     else if (host.endsWith(LOCAL)) title = "On this device";
     else title = host;
     barTitle.setText(title);
+    barSwitch.removeAllViews();
+    JSONArray allPcs = computers();
+    if (allPcs.length() > 1) {
+      for (int i = 0; i < allPcs.length(); i++) {
+        JSONObject item = allPcs.optJSONObject(i);
+        if (item == null) continue;
+        String ih = item.optString("host");
+        String nid = item.optString("node_id");
+        String shortLbl = "halo".equals(nid) ? "Halo"
+            : ("heat".equals(nid) ? "Laptop"
+            : (item.optString("name").isEmpty() ? ih : item.optString("name")));
+        boolean active = c != null && ih.equals(c.optString("host"));
+        TextView btn = barButton(shortLbl, "Switch to " + shortLbl);
+        btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        btn.setPadding(dp(10), 0, dp(10), 0);
+        btn.setTextColor(active ? Color.rgb(124, 200, 164) : Color.rgb(160, 170, 188));
+        if (!active) {
+          final JSONObject targetEntry = item;
+          btn.setOnClickListener(v -> switchComputer(targetEntry));
+        }
+        barSwitch.addView(btn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+      }
+    }
     bar.setVisibility(full == null ? View.VISIBLE : View.GONE);
   }
 
@@ -748,7 +804,14 @@ public class Main extends Activity {
     JSONArray list = computers();
     for (int i = 0; i < list.length(); i++) {
       JSONObject c = list.optJSONObject(i);
-      if (c != null && host.equals(c.optString("host"))) return c;
+      if (c == null) continue;
+      if (host.equals(c.optString("host"))) return c;
+      JSONArray alts = c.optJSONArray("alts");
+      if (alts != null) {
+        for (int j = 0; j < alts.length(); j++) {
+          if (host.equals(alts.optString(j))) return c;
+        }
+      }
     }
     return null;
   }
@@ -762,12 +825,17 @@ public class Main extends Activity {
   synchronized void putComputer(JSONObject entry) {
     JSONArray list = computers(), out = new JSONArray();
     boolean put = false;
+    String entryNode = entry.optString("node_id");
     for (int i = 0; i < list.length(); i++) {
       JSONObject c = list.optJSONObject(i);
       if (c == null) continue;
-      if (c.optString("host").equals(entry.optString("host"))) {
-        out.put(entry);
-        put = true;
+      boolean sameHost = c.optString("host").equals(entry.optString("host"));
+      boolean sameNode = !entryNode.isEmpty() && entryNode.equals(c.optString("node_id"));
+      if (sameHost || sameNode) {
+        if (!put) {
+          out.put(entry);
+          put = true;
+        }
       } else {
         out.put(c);
       }
@@ -862,6 +930,89 @@ public class Main extends Activity {
     }).start();
   }
 
+  void loginOwner(String address, String username, String password) {
+    new Thread(() -> {
+      try {
+        Link.OwnerLogin ol = Link.login(address, username, password);
+        runOnUiThread(() -> {
+          CookieManager cm = CookieManager.getInstance();
+          List<String> cookieHosts = new ArrayList<>();
+          cookieHosts.add(ol.host);
+          boolean savedPrimary = false;
+          try {
+            JSONObject peersDoc = new JSONObject(ol.peersJson);
+            String primaryId = peersDoc.optString("self_id");
+            JSONArray peers = peersDoc.optJSONArray("peers");
+            if (peers != null) {
+              for (int i = 0; i < peers.length(); i++) {
+                JSONObject p = peers.optJSONObject(i);
+                if (p == null) continue;
+                String pid = p.optString("id");
+                String plabel = p.optString("label");
+                String ppin = p.optString("pin");
+                JSONArray phosts = p.optJSONArray("hosts");
+                List<String> validHosts = new ArrayList<>();
+                if (p.optBoolean("self") || pid.equals(primaryId)) validHosts.add(ol.host);
+                if (phosts != null) {
+                  for (int j = 0; j < phosts.length(); j++) {
+                    String cand = Link.ownerAddress(phosts.optString(j));
+                    if (cand != null && !validHosts.contains(cand)) validHosts.add(cand);
+                  }
+                }
+                String usePin = (p.optBoolean("self") || pid.equals(primaryId)) ? ol.fingerprint : ppin;
+                if (validHosts.isEmpty() || usePin.isEmpty()) continue;
+                String mainHost = validHosts.get(0);
+                JSONObject entry = new JSONObject()
+                    .put("host", mainHost)
+                    .put("pin", usePin)
+                    .put("name", plabel)
+                    .put("node_id", pid)
+                    .put("owner", true)
+                    .put("alts", new JSONArray(validHosts))
+                    .put("may", new JSONArray("[\"remote\",\"media\",\"send\",\"jobs\"]"));
+                putComputer(entry);
+                if (mainHost.equals(ol.host)) savedPrimary = true;
+                for (String vh : validHosts) {
+                  if (!cookieHosts.contains(vh)) cookieHosts.add(vh);
+                  JobsWidget.keepToken(this, vh, ol.token);
+                }
+              }
+            }
+            if (!savedPrimary) {
+              JSONObject fallback = new JSONObject()
+                  .put("host", ol.host)
+                  .put("pin", ol.fingerprint)
+                  .put("name", ol.computer)
+                  .put("owner", true)
+                  .put("alts", new JSONArray().put(ol.host))
+                  .put("may", new JSONArray("[\"remote\",\"media\",\"send\",\"jobs\"]"));
+              putComputer(fallback);
+              JobsWidget.keepToken(this, ol.host, ol.token);
+            }
+          } catch (JSONException e) {
+            answer("{\"owner_login\":false,\"error\":\"Could not save sign-in details\"}");
+            return;
+          }
+          String cookieAttr = "; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000";
+          for (int i = 0; i < cookieHosts.size(); i++) {
+            final String ch = cookieHosts.get(i);
+            final boolean isLast = (i == cookieHosts.size() - 1);
+            cm.setCookie(Link.origin(ch), Link.COOKIE + "=" + ol.token + cookieAttr, stored -> {
+              if (isLast) {
+                cm.flush();
+                JobsWidget.refreshSoon(this, true);
+                answer("{\"owner_login\":true,\"host\":" + Link.quote(ol.host) + "}");
+                web.loadUrl(Link.origin(ol.host) + "/#relay");
+              }
+            });
+          }
+        });
+      } catch (Link.Failure f) {
+        answer("{\"owner_login\":false,\"error\":" + Link.quote(f.getMessage()) + "}");
+      }
+    }, "forge-owner-login").start();
+  }
+
   void forget(String host) {
     String pin = pinFor(host), token = token(host);
     if (pin.isEmpty()) return;
@@ -947,6 +1098,8 @@ public class Main extends Activity {
       if (c == null) continue;
       try {
         out.put(new JSONObject().put("host", c.optString("host")).put("name", c.optString("name"))
+            .put("owner", c.optBoolean("owner"))
+            .put("node_id", c.optString("node_id"))
             .put("may", c.optJSONArray("may") == null ? new JSONArray() : c.optJSONArray("may")));
       } catch (JSONException e) {
         // skipped
@@ -1008,8 +1161,23 @@ public class Main extends Activity {
    */
   String movedTo(String host, String token) {
     JSONObject c = computer(host);
+    if (c == null) return null;
+    // First check saved alternate addresses (e.g. Tailscale 100.x <-> home LAN IP)
+    JSONArray alts = c.optJSONArray("alts");
+    if (alts != null && alts.length() > 0) {
+      List<String> altList = new ArrayList<>();
+      for (int i = 0; i < alts.length(); i++) {
+        String cand = alts.optString(i);
+        if (!cand.isEmpty() && !cand.equals(host)) altList.add(cand);
+      }
+      String foundAlt = Link.findPinned(altList, c.optString("pin"));
+      if (foundAlt != null) {
+        moveComputer(host, foundAlt, token);
+        return foundAlt;
+      }
+    }
     byte[] b = Link.bytesOf(host);
-    if (c == null || b == null || b.length != 4 || Link.homeAddress(host) == null) return null;
+    if (b == null || b.length != 4 || Link.homeAddress(host) == null) return null;
     if ((b[0] & 0xff) == 100 || (b[0] & 0xff) == 127) return null; // Tailscale, or loopback (tests)
     synchronized (lookedFor) {
       Long last = lookedFor.get(host);
@@ -1565,6 +1733,14 @@ public class Main extends Activity {
       // a tablet by Android's own rule (smallest width 600 dp), for the start page's words and layout
       out.append(",\"tablet\":").append(getResources().getConfiguration().smallestScreenWidthDp >= 600);
       return out.append("}").toString();
+    }
+
+    @JavascriptInterface
+    public void ownerSignIn(final String host, final String username, final String password) {
+      runOnUiThread(() -> {
+        if (!onStart(web)) return;
+        loginOwner(host, username, password);
+      });
     }
   }
 

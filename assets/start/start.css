@@ -1,11 +1,11 @@
 [hidden] { display: none !important; }
 :root { color-scheme: dark; --bg: #0b0d12; --card: #141821; --line: #262c38; --text: #e8ebf2; --dim: #9aa3b5; --live: #7cc8a4; --on-live: #08130e; --live2: #a78bfa; --warn: #e8c37c; --wall: none; }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 system-ui, sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 18px/1.5 system-ui, sans-serif; }
 main { max-width: 1440px; margin: 0 auto; padding: max(12px, env(safe-area-inset-top)) 16px 32px; }
-h1 { font-size: 24px; margin: 8px 0; }
-h2 { font-size: 18px; margin: 18px 0 8px; }
-h3 { font-size: 18px; margin: 0; }
+h1 { font-size: 26px; margin: 8px 0; }
+h2 { font-size: 21px; margin: 18px 0 8px; }
+h3 { font-size: 20px; margin: 0; }
 p, .note, .muted { color: var(--dim); margin: 0 0 12px; }
 .muted { margin: 0; }
 .cols { display: grid; gap: 4px 24px; }
@@ -19,11 +19,12 @@ details.card { margin: 16px 0; }
 summary { min-height: 48px; display: flex; align-items: center; font-weight: 700; cursor: pointer; }
 form { display: flex; gap: 10px 8px; flex-wrap: wrap; }
 #pair-form button { flex: 1 1 100%; }
-input { flex: 1 1 220px; min-height: 48px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--text); padding: 10px 12px; font-size: 16px; }
-label { display: grid; gap: 4px; flex: 1 1 260px; color: var(--dim); font-size: 14px; }
+input { flex: 1 1 220px; min-height: 52px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--text); padding: 12px 14px; font-size: 18px; }
+label { display: grid; gap: 6px; flex: 1 1 260px; color: var(--text); font-size: 16px; font-weight: 600; }
 @media (min-width: 880px) { #pair-form label { flex: 1 1 calc(50% - 8px); } }
 #link { width: 100%; margin-bottom: 10px; }
-button, .button { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; border: 0; border-radius: 12px; padding: 0 18px; background: var(--live); color: var(--on-live); font-weight: 700; font-size: 16px; text-decoration: none; font-family: inherit; }
+button, .button { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; border: 0; border-radius: 12px; padding: 0 20px; background: var(--live); color: var(--on-live); font-weight: 700; font-size: 18px; text-decoration: none; font-family: inherit; }
+.owner-quick { margin-bottom: 18px; }
 button.quiet, .button.quiet { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 600; }
 button:disabled { opacity: 0.6; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 12px; }

@@ -72,6 +72,23 @@ public final class Link {
     }
   }
 
+  /** An owner username+password login: pinned cert, session token, and peer cluster info. */
+  public static final class OwnerLogin {
+    public final String host;
+    public final String fingerprint;
+    public final String token;
+    public final String computer;
+    public final String peersJson;
+
+    OwnerLogin(String host, String fingerprint, String token, String computer, String peersJson) {
+      this.host = host;
+      this.fingerprint = fingerprint;
+      this.token = token;
+      this.computer = computer;
+      this.peersJson = peersJson;
+    }
+  }
+
   /** A hub reply: status, body and the cookies it set. */
   public static final class Reply {
     public final int status;
@@ -136,6 +153,24 @@ public final class Link {
 
   /** Loopback counts as home only on an emulator (Main sets it) or in the laptop's test. */
   public static boolean loopbackOk = Boolean.getBoolean("forge.test.loopback");
+
+  /**
+   * Owner login address: any private LAN / Tailscale IP accepted by homeAddress(),
+   * or a Tailscale MagicDNS name (*.ts.net). Public internet hosts are refused.
+   */
+  public static String ownerAddress(String text) {
+    String home = homeAddress(text);
+    if (home != null) return home;
+    String s = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
+    if (s.startsWith("https://")) s = s.substring(8);
+    int slash = s.indexOf('/');
+    if (slash >= 0) s = s.substring(0, slash);
+    if (s.endsWith(":" + HUB_PORT) && s.indexOf(':') == s.lastIndexOf(':')) {
+      s = s.substring(0, s.length() - (":" + HUB_PORT).length());
+    }
+    if (s.matches("([a-z0-9-]{1,63}\\.){2,}ts\\.net")) return s;
+    return null;
+  }
 
   /** An address's one written form: what Chromium's URL parser makes of it. */
   static String written(byte[] b) {
@@ -267,7 +302,11 @@ public final class Link {
       SSLContext ctx = SSLContext.getInstance("TLS");
       ctx.init(null, new TrustManager[] {look}, null);
       try (SSLSocket socket = (SSLSocket) ctx.getSocketFactory().createSocket()) {
-        socket.connect(new InetSocketAddress(InetAddress.getByAddress(bytesOf(host)), port), TIMEOUT);
+        byte[] rawIp = bytesOf(host);
+        InetSocketAddress target = rawIp != null
+            ? new InetSocketAddress(InetAddress.getByAddress(rawIp), port)
+            : new InetSocketAddress(host, port);
+        socket.connect(target, TIMEOUT);
         socket.setSoTimeout(TIMEOUT);
         socket.startHandshake();
       }
@@ -443,6 +482,41 @@ public final class Link {
   }
 
   /**
+   * Sign in to an owner Phone Hub (PHONE_AUTH=owner) over home Wi-Fi or Tailscale
+   * using username and password, pinning its certificate and fetching peer nodes.
+   */
+  public static OwnerLogin login(String address, String username, String password) throws Failure {
+    String host = ownerAddress(address);
+    if (host == null) {
+      throw new Failure("Enter your computer's Wi-Fi address, 100.x Tailscale address, or .ts.net name.");
+    }
+    if (username == null || username.trim().isEmpty() || password == null || password.isEmpty()) {
+      throw new Failure("Enter both your username and password.");
+    }
+    byte[] der = peek(host, HUB_PORT);
+    String fp = fingerprint(der);
+    Reply boot = request("GET", host, fp, "/hub/api/bootstrap", null, null, null);
+    String pre = boot.cookie(PREAUTH);
+    if (boot.status != 200 || pre.isEmpty()) throw new Failure(said(boot));
+    if (!"owner".equals(field(boot.body, "mode"))) {
+      throw new Failure("That computer is not running owner sign-in mode.");
+    }
+    String body = "{\"username\":" + quote(username.trim()) + ",\"password\":" + quote(password) + "}";
+    Reply r = request("POST", host, fp, "/hub/api/login", PREAUTH + "=" + pre, pre, body);
+    String token = r.cookie(COOKIE);
+    if (r.status != 200 || token.isEmpty()) throw new Failure(said(r));
+    String comp = field(r.body, "computer");
+    String peersJson = "{}";
+    try {
+      Reply peers = get(host, fp, "/hub/api/peers", token);
+      if (peers.status == 200 && peers.body != null && !peers.body.isEmpty()) peersJson = peers.body;
+    } catch (Failure ignored) {
+      // single computer works even if peers endpoint is unavailable
+    }
+    return new OwnerLogin(host, fp, token, comp == null ? "" : comp, peersJson);
+  }
+
+  /**
    * Send one file to the computer's inbox (phone/hub.py /hub/api/inbox; the
    * computer's owner allows it per device in Devices, Phones). The body
    * streams from in; length is -1 when unknown. Returns the hub's reply.
@@ -557,9 +631,12 @@ public final class Link {
     SSLSocketFactory pin = pinned(fingerprint.toLowerCase(Locale.ROOT));
     for (String at : candidates) {
       byte[] b = bytesOf(at);
-      if (b == null) continue;
       try (SSLSocket socket = (SSLSocket) pin.createSocket()) {
-        socket.connect(new InetSocketAddress(InetAddress.getByAddress(b), HUB_PORT), TIMEOUT);
+        InetSocketAddress target = b != null
+            ? new InetSocketAddress(InetAddress.getByAddress(b), HUB_PORT)
+            : (at != null && at.endsWith(".ts.net") ? new InetSocketAddress(at, HUB_PORT) : null);
+        if (target == null) continue;
+        socket.connect(target, TIMEOUT);
         socket.setSoTimeout(TIMEOUT);
         socket.startHandshake();
         return at;
@@ -642,6 +719,10 @@ public final class Link {
         case "pair":
           Paired p = pair(args[1], args[2], args[3], args[4]);
           System.out.println(p.host + "\n" + p.fingerprint + "\n" + p.token);
+          break;
+        case "login":
+          OwnerLogin ol = login(args[1], args[2], args[3]);
+          System.out.println(ol.host + "\n" + ol.fingerprint + "\n" + ol.token + "\n" + ol.peersJson);
           break;
         case "get":
           Reply r = get(args[1], args[2], args[4], args[3]);

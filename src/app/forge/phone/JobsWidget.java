@@ -248,7 +248,7 @@ public class JobsWidget extends AppWidgetProvider {
     JobScheduler js = (JobScheduler) c.getSystemService(Context.JOB_SCHEDULER_SERVICE);
     if (js == null || js.getPendingJob(JOB) != null) return;
     JobInfo.Builder b = new JobInfo.Builder(JOB, new ComponentName(c, Refresh.class))
-        .setRequiredNetworkType(JobInfo.NETWORK_TYPE_UNMETERED)
+        .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
         .setRequiresBatteryNotLow(true)
         .setPeriodic(EVERY, 10 * 60 * 1000L)
         .setPersisted(true); // kept over a restart

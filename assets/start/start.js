@@ -161,8 +161,13 @@ function fill(box, c, state, parts) {
   status.textContent = apps.length
     ? `${running} of ${apps.length} apps running there.`
     : "It offers no apps to this device yet.";
-  if (state.moved_from) status.textContent += " It had a new address on the Wi-Fi; Forge found it.";
-  row.append(action("Open Forge", where(c.host), false));
+  if (state.moved_from) status.textContent += " Reconnected at its current address.";
+  if (c.owner) {
+    row.append(action("Relay & Chat", where(c.host, "relay"), false));
+    row.append(action("Forge Apps", where(c.host, "apps")));
+  } else {
+    row.append(action("Open Forge", where(c.host), false));
+  }
   if (may.includes("remote")) row.append(action("Remote", where(c.host, "remote")));
   if (may.includes("media")) row.append(action("Music, videos, pictures", where(c.host, "files")));
   if (sharing) {
@@ -223,6 +228,21 @@ function load() {
       const list = $("computers");
       list.replaceChildren(...state.computers.map(card));
       petalCommand(state.computers);
+      const qpcs = $("quick-computers");
+      if (qpcs) {
+        const ownerPcs = state.computers.filter((c) => c.owner);
+        qpcs.hidden = !ownerPcs.length;
+        if (ownerPcs.length) {
+          $("quick-login-form").hidden = true;
+          $("quick-home-note").textContent = "Pick Halo or Laptop to see Relay, chat, or use Forge:";
+          qpcs.replaceChildren(
+            ...ownerPcs.map((c) => action(`${c.name || c.host} · Relay`, where(c.host, "relay"), false)),
+            ...ownerPcs.map((c) => action(`${c.name || c.host} · Apps`, where(c.host, "apps"), true)),
+          );
+        } else {
+          $("quick-login-form").hidden = false;
+        }
+      }
       $("none").hidden = state.computers.length > 0;
       $("add").open = !state.computers.length || fromLink();
       $("add-title").textContent = state.computers.length ? "Add another computer" : "Add a computer";
@@ -304,6 +324,19 @@ $("pair-form").addEventListener("submit", () => {
   $("pair-go").textContent = "Pairing...";
 });
 window.forgeAnswer = (r) => {
+  if (r.owner_login !== undefined) {
+    for (const id of ["quick-go", "owner-go"]) {
+      if ($(id)) { $(id).disabled = false; $(id).textContent = id === "quick-go" ? "Sign in & open Relay" : "Sign in"; }
+    }
+    if (!r.owner_login) {
+      for (const id of ["quick-error", "owner-error"]) {
+        if ($(id)) { $(id).textContent = r.error || "Sign-in failed."; $(id).hidden = false; }
+      }
+    } else {
+      load();
+    }
+    return;
+  }
   if (r.update) {
     updateSaid(r);
     return;
@@ -383,6 +416,56 @@ if (window.ForgeDevice) {
 load().then(() => {
   if (fromLink()) $("pair-name").focus();
 });
+
+function submitOwnerLogin(hostId, userId, passId, btnId, errId) {
+  const err = $(errId);
+  if (err) { err.hidden = true; err.textContent = ""; }
+  const h = $(hostId).value.trim();
+  const u = $(userId).value.trim();
+  const p = $(passId).value;
+  if (!h || !u || !p) return;
+  if (!window.ForgeAndroid || !ForgeAndroid.ownerSignIn) {
+    if (err) { err.textContent = "Update Forge for Android to use quick sign-in."; err.hidden = false; }
+    return;
+  }
+  $(btnId).disabled = true;
+  $(btnId).textContent = "Signing in…";
+  ForgeAndroid.ownerSignIn(h, u, p);
+}
+
+if ($("quick-login-form")) {
+  $("quick-login-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    submitOwnerLogin("quick-host", "quick-user", "quick-pass", "quick-go", "quick-error");
+  });
+}
+if ($("owner-signin-form")) {
+  $("owner-signin-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    submitOwnerLogin("owner-host", "owner-user", "owner-pass", "owner-go", "owner-error");
+  });
+}
+if ($("quick-scan")) {
+  $("quick-scan").addEventListener("click", () => {
+    $("quick-scan").disabled = true;
+    $("quick-scan").textContent = "Scanning…";
+    fetch("/scan.json", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((r) => {
+        if (r.found && r.found.length) {
+          $("quick-host").value = r.found[0].host;
+          $("quick-user").focus();
+        } else if ($("quick-error")) {
+          $("quick-error").textContent = r.error || "No computer found on this Wi-Fi; enter its Tailscale address.";
+          $("quick-error").hidden = false;
+        }
+      })
+      .finally(() => {
+        $("quick-scan").disabled = false;
+        $("quick-scan").textContent = "Find on Wi-Fi";
+      });
+  });
+}
 
 // -- the top, the tiles and updates (Relay task 1316) ----------------------
 

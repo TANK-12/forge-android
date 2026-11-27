@@ -26,6 +26,22 @@
     <a class="offer" id="offer" href="#settings" hidden><span id="offer-line"></span><b>Update</b></a>
   </header>
 
+  <section class="card owner-quick" id="quick-login-home" data-pane="home">
+    <h2>Relay &amp; Forge on Halo or Laptop</h2>
+    <p class="note" id="quick-home-note">Sign in once to see running jobs, control Relay, chat, and open Forge apps from Wi-Fi or away.</p>
+    <div id="quick-computers" class="row" hidden></div>
+    <form id="quick-login-form" autocomplete="on">
+      <label>Computer address (Wi-Fi or Tailscale) <input id="quick-host" placeholder="192.168.1.20 or 100.64.0.10" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" required></label>
+      <label>Username <input id="quick-user" placeholder="Username" autocapitalize="off" autocomplete="username" spellcheck="false" required></label>
+      <label>Password <input id="quick-pass" type="password" placeholder="Password" autocomplete="current-password" required></label>
+      <div class="row" style="width:100%">
+        <button type="submit" id="quick-go">Sign in &amp; open Relay</button>
+        <button type="button" class="quiet" id="quick-scan">Find on Wi-Fi</button>
+      </div>
+    </form>
+    <p class="err" id="quick-error" role="alert" hidden></p>
+  </section>
+
   <section class="home-apps" data-pane="home">
     <div class="section-head"><h2>Your space</h2><a class="button quiet" href="#apps">All apps</a></div>
     <p class="note">Pin your favourites from Apps. Everything here runs on this device.</p>
@@ -107,11 +123,23 @@
         <p class="note">The check code proves the address is your computer: the app trusts its certificate only when they match, and nothing is sent before that. Only home-network addresses are used.</p>
       </details>
 
-      <details class="card" id="owner">
-        <summary>Your own laptop over Tailscale</summary>
-        <p>For Forge's owner: the laptop's private address (the one ending in .ts.net). You sign in with the laptop's password and authenticator code; nothing secret is kept here.</p>
+      <details class="card" id="owner" open>
+        <summary>Quick owner sign-in (Wi-Fi or Tailscale)</summary>
+        <p>Sign in with your Forge phone username and password. Both Halo and your laptop are added automatically so you can switch between them with one tap.</p>
+        <form id="owner-signin-form" autocomplete="on">
+          <label>Address <input id="owner-host" placeholder="192.168.1.20, 100.x.y.z, or computer.your-tailnet.ts.net" autocapitalize="off" autocomplete="off" spellcheck="false" required></label>
+          <label>Username <input id="owner-user" placeholder="Username" autocapitalize="off" autocomplete="username" spellcheck="false" required></label>
+          <label>Password <input id="owner-pass" type="password" placeholder="Password" autocomplete="current-password" required></label>
+          <button type="submit" id="owner-go">Sign in</button>
+        </form>
+        <p class="err" id="owner-error" role="alert" hidden></p>
+      </details>
+
+      <details class="card" id="tailscale-legacy">
+        <summary>Architect TOTP over Tailscale</summary>
+        <p>For authenticator-code login over .ts.net.</p>
         <form action="/connect" method="get">
-          <input name="host" id="host" placeholder="laptop.your-tailnet.ts.net" autocapitalize="off" autocomplete="off" spellcheck="false" required pattern="[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+\.ts\.net" aria-label="Tailscale address">
+          <input name="host" id="host" placeholder="computer.your-tailnet.ts.net" autocapitalize="off" autocomplete="off" spellcheck="false" required pattern="[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+\.ts\.net" aria-label="Tailscale address">
           <button type="submit">Open Forge</button>
         </form>
       </details>
