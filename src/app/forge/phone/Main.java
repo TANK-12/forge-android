@@ -62,6 +62,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import javax.net.ssl.HttpsURLConnection;
 import org.json.JSONArray;
@@ -827,17 +828,40 @@ public class Main extends Activity {
     return c == null ? "" : c.optString("pin", "");
   }
 
-  /** Change or add one computer's entry (by host), keeping the others. */
+  static java.util.Set<String> entryHosts(JSONObject c) {
+    java.util.Set<String> hosts = new java.util.HashSet<>();
+    if (c == null) return hosts;
+    String h = c.optString("host");
+    if (!h.isEmpty()) hosts.add(h);
+    JSONArray alts = c.optJSONArray("alts");
+    if (alts != null) {
+      for (int i = 0; i < alts.length(); i++) {
+        String a = alts.optString(i);
+        if (!a.isEmpty()) hosts.add(a);
+      }
+    }
+    return hosts;
+  }
+
+  /** Change or add one computer's entry (by host, alts or node_id), keeping the others. */
   synchronized void putComputer(JSONObject entry) {
     JSONArray list = computers(), out = new JSONArray();
     boolean put = false;
     String entryNode = entry.optString("node_id");
+    java.util.Set<String> wantHosts = entryHosts(entry);
     for (int i = 0; i < list.length(); i++) {
       JSONObject c = list.optJSONObject(i);
       if (c == null) continue;
       boolean sameHost = c.optString("host").equals(entry.optString("host"));
       boolean sameNode = !entryNode.isEmpty() && entryNode.equals(c.optString("node_id"));
-      if (sameHost || sameNode) {
+      boolean sharesAddr = false;
+      for (String ch : entryHosts(c)) {
+        if (wantHosts.contains(ch)) {
+          sharesAddr = true;
+          break;
+        }
+      }
+      if (sameHost || sameNode || sharesAddr) {
         if (!put) {
           out.put(entry);
           put = true;
@@ -919,6 +943,7 @@ public class Main extends Activity {
             return;
           }
           putComputer(entry);
+          web.clearSslPreferences(); // drop any cached proceed decision for an older cert
           CookieManager cm = CookieManager.getInstance();
           // answered once the cookie is really stored: the start page reads it at once (0.3 showed
           // an empty form until a restart)
@@ -936,10 +961,12 @@ public class Main extends Activity {
     }).start();
   }
 
-  void loginOwner(String address, String username, String password) {
+  void loginOwner(String address, String username, String password, String check) {
+    String normalized = Link.ownerAddress(address);
+    final String trustedPin = normalized == null ? "" : pinFor(normalized);
     new Thread(() -> {
       try {
-        Link.OwnerLogin ol = Link.login(address, username, password);
+        Link.OwnerLogin ol = Link.login(address, username, password, check, trustedPin);
         runOnUiThread(() -> {
           CookieManager cm = CookieManager.getInstance();
           List<String> cookieHosts = new ArrayList<>();
@@ -970,8 +997,9 @@ public class Main extends Activity {
                   if (!vh.startsWith("169.254.")) nonLinkLocal.add(vh);
                 }
                 if (!nonLinkLocal.isEmpty()) validHosts = nonLinkLocal;
-                String usePin = (p.optBoolean("self") || pid.equals(primaryId)) ? ol.fingerprint : ppin;
-                if (validHosts.isEmpty() || usePin.isEmpty()) continue;
+                String rawPin = (p.optBoolean("self") || pid.equals(primaryId)) ? ol.fingerprint : ppin;
+                String usePin = rawPin == null ? "" : rawPin.trim().toLowerCase(Locale.ROOT);
+                if (validHosts.isEmpty() || !Link.isFingerprint(usePin)) continue;
                 String mainHost = validHosts.get(0);
                 JSONObject entry = new JSONObject()
                     .put("host", mainHost)
@@ -982,7 +1010,8 @@ public class Main extends Activity {
                     .put("alts", new JSONArray(validHosts))
                     .put("may", new JSONArray("[\"remote\",\"media\",\"send\",\"jobs\"]"));
                 putComputer(entry);
-                if (mainHost.equals(ol.host)) savedPrimary = true;
+                if (mainHost.equals(ol.host) || validHosts.contains(ol.host)
+                    || p.optBoolean("self") || pid.equals(primaryId)) savedPrimary = true;
                 for (String vh : validHosts) {
                   if (!cookieHosts.contains(vh)) cookieHosts.add(vh);
                   JobsWidget.keepToken(this, vh, ol.token);
@@ -990,13 +1019,17 @@ public class Main extends Activity {
               }
             }
             if (!savedPrimary) {
+              JSONObject prev = computer(ol.host);
               JSONObject fallback = new JSONObject()
                   .put("host", ol.host)
                   .put("pin", ol.fingerprint)
-                  .put("name", ol.computer)
+                  .put("name", ol.computer.isEmpty() && prev != null ? prev.optString("name") : ol.computer)
                   .put("owner", true)
                   .put("alts", new JSONArray().put(ol.host))
                   .put("may", new JSONArray("[\"remote\",\"media\",\"send\",\"jobs\"]"));
+              if (prev != null && !prev.optString("node_id").isEmpty()) {
+                fallback.put("node_id", prev.optString("node_id"));
+              }
               putComputer(fallback);
               JobsWidget.keepToken(this, ol.host, ol.token);
             }
@@ -1004,6 +1037,7 @@ public class Main extends Activity {
             answer("{\"owner_login\":false,\"error\":\"Could not save sign-in details\"}");
             return;
           }
+          web.clearSslPreferences(); // drop any cached proceed decision for an older cert
           String cookieAttr = "; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000";
           for (int i = 0; i < cookieHosts.size(); i++) {
             final String ch = cookieHosts.get(i);
@@ -1780,10 +1814,10 @@ public class Main extends Activity {
     }
 
     @JavascriptInterface
-    public void ownerSignIn(final String host, final String username, final String password) {
+    public void ownerSignIn(final String host, final String username, final String password, final String check) {
       runOnUiThread(() -> {
         if (!onStart(web)) return;
-        loginOwner(host, username, password);
+        loginOwner(host, username, password, check);
       });
     }
   }

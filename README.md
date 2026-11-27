@@ -2,6 +2,13 @@
 
 A small Android app for Forge, the desktop tool hub. One WebView.
 
+**0.22:** owner sign-in now verifies the computer's certificate before sending
+the username or password (matching the 16-character check code shown on the
+computer in Devices, Phones or Relay Settings, matching an already-trusted
+pinned certificate, or verifying a system-trusted HTTPS certificate for a
+`.ts.net` address; otherwise it stops with a clear message and sends nothing).
+Paired mode and existing paired devices are unchanged.
+
 **0.19:** calmer visualiser audio sensitivity (linear RMS auto-gain with soft
 headroom so loud music does not peg the bars or waveform), a new Sensitivity
 control in Visualiser Settings (Gentle to High chips plus a 30%–200% slider,
@@ -100,9 +107,10 @@ updates). 0.6 installs over 0.5 by opening its APK the usual way; the
 separate Forge Visualiser and Forge Theme apps are no longer needed (set the
 wallpaper and widgets again from Forge before removing them).
 
-**Status (0.19):** built and checked in headless Chrome (real APK assets and
-visualiser page with recorded loud-music frames) and JVM Sound.java tests; live
-playback on Emerson's physical tablet remains unverified. Forge Settings ->
+**Status (0.22):** owner sign-in certificate verification (check code, saved
+pin, or system-trusted `.ts.net` HTTPS) built and verified in JVM TLS tests,
+headless Chrome (real APK assets) and headless Android 14 emulator; live
+check on Emerson's physical phone/tablet remains unverified. Forge Settings ->
 Check for updates installs over the old version with the same signing key.
 Existing user data, pairings and preferences stay.
 

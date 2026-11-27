@@ -11,9 +11,11 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -23,7 +25,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
@@ -112,6 +117,19 @@ public final class Link {
 
   // -- addresses -------------------------------------------------------------
 
+  /** Test-only port override when running under the laptop's JVM test harness. */
+  static int hubPort() {
+    if (Boolean.getBoolean("forge.test.loopback")) {
+      int p = Integer.getInteger("forge.test.port", HUB_PORT);
+      if (p >= 1024 && p <= 65535) return p;
+    }
+    return HUB_PORT;
+  }
+
+  static boolean isHubPortSuffix(String tail) {
+    return tail.equals(":" + HUB_PORT) || tail.equals(":" + hubPort());
+  }
+
   /**
    * The address in its one written form (dotted decimal, or RFC 5952 IPv6
    * without brackets), the form the WebView also reads it in, or null unless
@@ -128,12 +146,13 @@ public final class Link {
     if (slash >= 0) s = s.substring(0, slash);
     if (s.startsWith("[")) {
       int end = s.indexOf(']');
-      if (end < 0 || !(s.substring(end + 1).isEmpty() || s.substring(end + 1).equals(":" + HUB_PORT))) {
+      if (end < 0 || !(s.substring(end + 1).isEmpty() || isHubPortSuffix(s.substring(end + 1)))) {
         return null;
       }
       s = s.substring(1, end);
-    } else if (s.endsWith(":" + HUB_PORT) && s.indexOf(':') == s.lastIndexOf(':')) {
-      s = s.substring(0, s.length() - (":" + HUB_PORT).length());
+    } else if (s.indexOf(':') > 0 && s.indexOf(':') == s.lastIndexOf(':')
+        && isHubPortSuffix(s.substring(s.indexOf(':')))) {
+      s = s.substring(0, s.indexOf(':'));
     }
     byte[] b = bytesOf(s);
     if (b == null) return null; // only literals: a name would need a lookup
@@ -154,6 +173,17 @@ public final class Link {
   /** Loopback counts as home only on an emulator (Main sets it) or in the laptop's test. */
   public static boolean loopbackOk = Boolean.getBoolean("forge.test.loopback");
 
+  /** Whether a normalized host is a Tailscale MagicDNS name (*.ts.net, RFC 1123 labels). */
+  public static boolean isTailscaleName(String host) {
+    return host != null && host.length() <= 253
+        && host.matches("([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.){2,}ts\\.net");
+  }
+
+  /** Whether text is a 64-character hex SHA-256 certificate fingerprint. */
+  public static boolean isFingerprint(String text) {
+    return text != null && text.matches("[0-9a-fA-F]{64}");
+  }
+
   /**
    * Owner login address: any private LAN / Tailscale IP accepted by homeAddress(),
    * or a Tailscale MagicDNS name (*.ts.net). Public internet hosts are refused.
@@ -165,10 +195,11 @@ public final class Link {
     if (s.startsWith("https://")) s = s.substring(8);
     int slash = s.indexOf('/');
     if (slash >= 0) s = s.substring(0, slash);
-    if (s.endsWith(":" + HUB_PORT) && s.indexOf(':') == s.lastIndexOf(':')) {
-      s = s.substring(0, s.length() - (":" + HUB_PORT).length());
+    if (s.indexOf(':') > 0 && s.indexOf(':') == s.lastIndexOf(':')
+        && isHubPortSuffix(s.substring(s.indexOf(':')))) {
+      s = s.substring(0, s.indexOf(':'));
     }
-    if (s.matches("([a-z0-9-]{1,63}\\.){2,}ts\\.net")) return s;
+    if (isTailscaleName(s)) return s;
     return null;
   }
 
@@ -237,7 +268,7 @@ public final class Link {
   }
 
   public static String origin(String host) {
-    return "https://" + urlHost(host) + ":" + HUB_PORT;
+    return "https://" + urlHost(host) + ":" + hubPort();
   }
 
   // -- certificates ------------------------------------------------------------
@@ -278,6 +309,17 @@ public final class Link {
     }
   }
 
+  static void setSni(SSLSocket socket, String host) {
+    if (host == null || bytesOf(host) != null) return;
+    try {
+      SSLParameters params = socket.getSSLParameters();
+      params.setServerNames(Collections.singletonList(new SNIHostName(host)));
+      socket.setSSLParameters(params);
+    } catch (IllegalArgumentException ignored) {
+      // malformed host name: skip SNI rather than crashing the thread
+    }
+  }
+
   /** The certificate host:port presents, from a handshake that sends nothing else. */
   public static byte[] peek(String host, int port) throws Failure {
     final byte[][] seen = new byte[1][];
@@ -290,7 +332,7 @@ public final class Link {
       @Override
       public void checkServerTrusted(X509Certificate[] chain, String type) throws CertificateException {
         if (chain == null || chain.length == 0) throw new CertificateException("no certificate");
-        seen[0] = chain[0].getEncoded(); // compared with the check code by the caller
+        seen[0] = chain[0].getEncoded(); // compared with the check code or saved pin by the caller
       }
 
       @Override
@@ -301,13 +343,24 @@ public final class Link {
     try {
       SSLContext ctx = SSLContext.getInstance("TLS");
       ctx.init(null, new TrustManager[] {look}, null);
-      try (SSLSocket socket = (SSLSocket) ctx.getSocketFactory().createSocket()) {
-        byte[] rawIp = bytesOf(host);
-        InetSocketAddress target = rawIp != null
-            ? new InetSocketAddress(InetAddress.getByAddress(rawIp), port)
-            : new InetSocketAddress(host, port);
-        socket.connect(target, TIMEOUT);
-        socket.setSoTimeout(TIMEOUT);
+      byte[] rawIp = bytesOf(host);
+      InetSocketAddress target = rawIp != null
+          ? new InetSocketAddress(InetAddress.getByAddress(rawIp), port)
+          : new InetSocketAddress(host, port);
+      java.net.Socket raw = new java.net.Socket();
+      try {
+        raw.connect(target, TIMEOUT);
+        raw.setSoTimeout(TIMEOUT);
+      } catch (IOException e) {
+        try {
+          raw.close();
+        } catch (IOException ignored) {
+          // already failed
+        }
+        throw e;
+      }
+      try (SSLSocket socket = (SSLSocket) ctx.getSocketFactory().createSocket(raw, host, port, true)) {
+        setSni(socket, host);
         socket.startHandshake();
       }
     } catch (IOException | java.security.GeneralSecurityException e) {
@@ -315,6 +368,60 @@ public final class Link {
     }
     if (seen[0] == null) throw new Failure(unreachable());
     return seen[0];
+  }
+
+  /**
+   * Verify a *.ts.net host using the system CA trust store and standard HTTPS
+   * hostname verification (SNI + RFC 6125 endpoint identification). Sends no
+   * HTTP data; returns the verified leaf certificate's DER bytes.
+   */
+  static byte[] verifySystemTrusted(String connectHost, int port, String expectedHost) throws Failure {
+    if (!isTailscaleName(expectedHost)) {
+      throw new Failure("Only .ts.net addresses can be verified by Tailscale HTTPS. Nothing was sent.");
+    }
+    try {
+      SSLContext ctx = SSLContext.getDefault();
+      byte[] rawIp = bytesOf(connectHost);
+      InetSocketAddress target = rawIp != null
+          ? new InetSocketAddress(InetAddress.getByAddress(rawIp), port)
+          : new InetSocketAddress(connectHost, port);
+      java.net.Socket raw = new java.net.Socket();
+      try {
+        raw.connect(target, TIMEOUT);
+        raw.setSoTimeout(TIMEOUT);
+      } catch (IOException e) {
+        try {
+          raw.close();
+        } catch (IOException ignored) {
+          // already failed
+        }
+        throw e;
+      }
+      try (SSLSocket socket = (SSLSocket) ctx.getSocketFactory().createSocket(raw, expectedHost, port, true)) {
+        SSLParameters params = socket.getSSLParameters();
+        params.setEndpointIdentificationAlgorithm("HTTPS");
+        params.setServerNames(Collections.singletonList(new SNIHostName(expectedHost)));
+        socket.setSSLParameters(params);
+        socket.startHandshake();
+        SSLSession session = socket.getSession();
+        Certificate[] peer = session.getPeerCertificates();
+        if (peer == null || peer.length == 0) {
+          throw new javax.net.ssl.SSLPeerUnverifiedException("no certificate");
+        }
+        return peer[0].getEncoded();
+      }
+    } catch (javax.net.ssl.SSLException e) {
+      if (!wrongCertificate(e) && closedEarly(e)) throw new Failure(unreachable());
+      throw new Failure("Could not verify a Tailscale HTTPS certificate for " + expectedHost
+          + ". Nothing was sent. Enter the computer's 16-character check code (shown in"
+          + " Devices, Phones or Relay settings) to verify it.");
+    } catch (java.security.GeneralSecurityException | IllegalArgumentException e) {
+      throw new Failure("Could not verify a Tailscale HTTPS certificate for " + expectedHost
+          + ". Nothing was sent. Enter the computer's 16-character check code (shown in"
+          + " Devices, Phones or Relay settings) to verify it.");
+    } catch (IOException e) {
+      throw new Failure(unreachable());
+    }
   }
 
   static String unreachable() {
@@ -459,7 +566,7 @@ public final class Link {
     if (plainCode(check).length() != 16) {
       throw new Failure("The check code is 16 letters and digits, as Devices shows it.");
     }
-    byte[] der = peek(host, HUB_PORT);
+    byte[] der = peek(host, hubPort());
     if (!MessageDigest.isEqual(plainCode(checkCode(der)).getBytes(StandardCharsets.US_ASCII),
         plainCode(check).getBytes(StandardCharsets.US_ASCII))) {
       throw new Failure("The check code does not match: this is not your computer, or the"
@@ -482,10 +589,79 @@ public final class Link {
   }
 
   /**
+   * Verify the owner hub's certificate before sending any credentials.
+   * Accepts: (1) an explicit 16-character check code matching the presented
+   * certificate, (2) a previously pinned SHA-256 fingerprint for this host, or
+   * (3) a system-CA-trusted HTTPS certificate for a *.ts.net MagicDNS name.
+   */
+  static String verifyOwnerCertificate(String host, String check, String trustedFingerprint) throws Failure {
+    String wantCheck = plainCode(check);
+    boolean hasCheck = check != null && !check.trim().isEmpty();
+    if (hasCheck && wantCheck.length() != 16) {
+      throw new Failure("The check code is 16 letters and digits, as shown on your computer"
+          + " (Devices, Phones or Relay settings). Nothing was sent.");
+    }
+    String wantPin = trustedFingerprint == null ? "" : trustedFingerprint.trim().toLowerCase(Locale.ROOT);
+    if (!wantPin.isEmpty() && !isFingerprint(wantPin)) wantPin = "";
+    boolean tsName = isTailscaleName(host);
+
+    if (!hasCheck && wantPin.isEmpty() && !tsName) {
+      throw new Failure("Enter this computer's 16-character check code (shown in Devices,"
+          + " Phones or Relay settings) before signing in, so your password is only sent to"
+          + " your computer. Nothing was sent.");
+    }
+
+    if (hasCheck) {
+      byte[] der = peek(host, hubPort());
+      if (!MessageDigest.isEqual(
+          plainCode(checkCode(der)).getBytes(StandardCharsets.US_ASCII),
+          wantCheck.getBytes(StandardCharsets.US_ASCII))) {
+        throw new Failure("The check code does not match: this is not your computer, or the"
+            + " code was mistyped. Nothing was sent.");
+      }
+      return fingerprint(der);
+    }
+
+    if (!wantPin.isEmpty()) {
+      byte[] der = peek(host, hubPort());
+      String seen = fingerprint(der);
+      if (MessageDigest.isEqual(
+          seen.getBytes(StandardCharsets.US_ASCII),
+          wantPin.getBytes(StandardCharsets.US_ASCII))) {
+        return wantPin;
+      }
+      if (tsName) {
+        try {
+          return fingerprint(verifySystemTrusted(host, hubPort(), host));
+        } catch (Failure ignored) {
+          // fall through to the pinned-certificate mismatch error
+        }
+      }
+      throw new Failure("The computer at " + host + " answered with another certificate than"
+          + " the one this device trusts. Nothing was sent. If Forge was set up again there,"
+          + " enter its 16-character check code (or forget the computer first).");
+    }
+
+    return fingerprint(verifySystemTrusted(host, hubPort(), host));
+  }
+
+  /**
    * Sign in to an owner Phone Hub (PHONE_AUTH=owner) over home Wi-Fi or Tailscale
-   * using username and password, pinning its certificate and fetching peer nodes.
+   * after verifying the computer's certificate (requires a system-trusted *.ts.net
+   * HTTPS cert when called without a check code or pinned fingerprint).
    */
   public static OwnerLogin login(String address, String username, String password) throws Failure {
+    return login(address, username, password, null, null);
+  }
+
+  /**
+   * Sign in to an owner Phone Hub (PHONE_AUTH=owner) over home Wi-Fi or Tailscale
+   * using username and password, verifying the server certificate via check code,
+   * previously pinned fingerprint, or system-trusted *.ts.net HTTPS before sending
+   * any credentials.
+   */
+  public static OwnerLogin login(String address, String username, String password,
+      String check, String trustedFingerprint) throws Failure {
     String host = ownerAddress(address);
     if (host == null) {
       throw new Failure("Enter your computer's Wi-Fi address, 100.x Tailscale address, or .ts.net name.");
@@ -493,8 +669,7 @@ public final class Link {
     if (username == null || username.trim().isEmpty() || password == null || password.isEmpty()) {
       throw new Failure("Enter both your username and password.");
     }
-    byte[] der = peek(host, HUB_PORT);
-    String fp = fingerprint(der);
+    String fp = verifyOwnerCertificate(host, check, trustedFingerprint);
     Reply boot = request("GET", host, fp, "/hub/api/bootstrap", null, null, null);
     String pre = boot.cookie(PREAUTH);
     if (boot.status != 200 || pre.isEmpty()) throw new Failure(said(boot));
@@ -600,7 +775,7 @@ public final class Link {
       if (at.equals(mine) || homeAddress(at) == null) continue;
       pool.execute(() -> {
         try (java.net.Socket s = factory.createSocket()) {
-          s.connect(new InetSocketAddress(InetAddress.getByAddress(b), HUB_PORT), waitMs);
+          s.connect(new InetSocketAddress(InetAddress.getByAddress(b), hubPort()), waitMs);
           found.add(at);
         } catch (IOException e) {
           // nothing there
@@ -631,17 +806,25 @@ public final class Link {
     SSLSocketFactory pin = pinned(fingerprint.toLowerCase(Locale.ROOT));
     for (String at : candidates) {
       byte[] b = bytesOf(at);
-      try (SSLSocket socket = (SSLSocket) pin.createSocket()) {
+      if (b == null && !isTailscaleName(at)) continue;
+      java.net.Socket raw = new java.net.Socket();
+      try {
         InetSocketAddress target = b != null
-            ? new InetSocketAddress(InetAddress.getByAddress(b), HUB_PORT)
-            : (at != null && at.endsWith(".ts.net") ? new InetSocketAddress(at, HUB_PORT) : null);
-        if (target == null) continue;
-        socket.connect(target, TIMEOUT);
-        socket.setSoTimeout(TIMEOUT);
-        socket.startHandshake();
-        return at;
+            ? new InetSocketAddress(InetAddress.getByAddress(b), hubPort())
+            : new InetSocketAddress(at, hubPort());
+        raw.connect(target, TIMEOUT);
+        raw.setSoTimeout(TIMEOUT);
+        try (SSLSocket socket = (SSLSocket) pin.createSocket(raw, at, hubPort(), true)) {
+          setSni(socket, at);
+          socket.startHandshake();
+          return at;
+        }
       } catch (IOException | RuntimeException e) {
-        // nothing there, or not this computer
+        try {
+          raw.close();
+        } catch (IOException ignored) {
+          // nothing there, or not this computer
+        }
       }
     }
     return null;
@@ -720,10 +903,18 @@ public final class Link {
           Paired p = pair(args[1], args[2], args[3], args[4]);
           System.out.println(p.host + "\n" + p.fingerprint + "\n" + p.token);
           break;
-        case "login":
-          OwnerLogin ol = login(args[1], args[2], args[3]);
+        case "login": {
+          String checkArg = args.length > 4 && !"-".equals(args[4]) ? args[4] : null;
+          String pinArg = args.length > 5 && !"-".equals(args[5]) ? args[5] : null;
+          OwnerLogin ol = login(args[1], args[2], args[3], checkArg, pinArg);
           System.out.println(ol.host + "\n" + ol.fingerprint + "\n" + ol.token + "\n" + ol.peersJson);
           break;
+        }
+        case "verify-ts": {
+          byte[] verified = verifySystemTrusted(args[1], hubPort(), args[2]);
+          System.out.println(fingerprint(verified));
+          break;
+        }
         case "get":
           Reply r = get(args[1], args[2], args[4], args[3]);
           System.out.println(r.status + "\n" + r.body);

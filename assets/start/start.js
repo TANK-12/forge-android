@@ -333,6 +333,12 @@ window.forgeAnswer = (r) => {
         if ($(id)) { $(id).textContent = r.error || "Sign-in failed."; $(id).hidden = false; }
       }
     } else {
+      for (const id of ["quick-error", "owner-error"]) {
+        if ($(id)) { $(id).hidden = true; $(id).textContent = ""; }
+      }
+      for (const id of ["quick-pass", "owner-pass", "quick-check", "owner-check"]) {
+        if ($(id)) $(id).value = "";
+      }
       load();
     }
     return;
@@ -417,10 +423,11 @@ load().then(() => {
   if (fromLink()) $("pair-name").focus();
 });
 
-function submitOwnerLogin(hostId, userId, passId, btnId, errId) {
+function submitOwnerLogin(hostId, checkId, userId, passId, btnId, errId) {
   const err = $(errId);
   if (err) { err.hidden = true; err.textContent = ""; }
   const h = $(hostId).value.trim();
+  const c = $(checkId) ? $(checkId).value.trim() : "";
   const u = $(userId).value.trim();
   const p = $(passId).value;
   if (!h || !u || !p) return;
@@ -430,19 +437,19 @@ function submitOwnerLogin(hostId, userId, passId, btnId, errId) {
   }
   $(btnId).disabled = true;
   $(btnId).textContent = "Signing in…";
-  ForgeAndroid.ownerSignIn(h, u, p);
+  ForgeAndroid.ownerSignIn(h, u, p, c);
 }
 
 if ($("quick-login-form")) {
   $("quick-login-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    submitOwnerLogin("quick-host", "quick-user", "quick-pass", "quick-go", "quick-error");
+    submitOwnerLogin("quick-host", "quick-check", "quick-user", "quick-pass", "quick-go", "quick-error");
   });
 }
 if ($("owner-signin-form")) {
   $("owner-signin-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    submitOwnerLogin("owner-host", "owner-user", "owner-pass", "owner-go", "owner-error");
+    submitOwnerLogin("owner-host", "owner-check", "owner-user", "owner-pass", "owner-go", "owner-error");
   });
 }
 if ($("quick-scan")) {
@@ -454,7 +461,8 @@ if ($("quick-scan")) {
       .then((r) => {
         if (r.found && r.found.length) {
           $("quick-host").value = r.found[0].host;
-          $("quick-user").focus();
+          if (!r.found[0].paired && $("quick-check")) $("quick-check").focus();
+          else $("quick-user").focus();
         } else if ($("quick-error")) {
           $("quick-error").textContent = r.error || "No computer found on this Wi-Fi; enter its Tailscale address.";
           $("quick-error").hidden = false;

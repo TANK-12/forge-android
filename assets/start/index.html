@@ -32,6 +32,7 @@
     <div id="quick-computers" class="row" hidden></div>
     <form id="quick-login-form" autocomplete="on">
       <label>Computer address (Wi-Fi or Tailscale) <input id="quick-host" placeholder="192.168.1.20 or 100.64.0.10" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" required></label>
+      <label>Check code (first time on Wi-Fi) <input id="quick-check" placeholder="ABCD-EFGH-JKLM-NPQR" autocapitalize="characters" autocomplete="off" spellcheck="false"></label>
       <label>Username <input id="quick-user" placeholder="Username" autocapitalize="off" autocomplete="username" spellcheck="false" required></label>
       <label>Password <input id="quick-pass" type="password" placeholder="Password" autocomplete="current-password" required></label>
       <div class="row" style="width:100%">
@@ -39,6 +40,7 @@
         <button type="button" class="quiet" id="quick-scan">Find on Wi-Fi</button>
       </div>
     </form>
+    <p class="note">Shown on your computer in Devices, Phones or Relay Settings. Checked before your password is sent; leave blank if already trusted or using a .ts.net HTTPS address.</p>
     <p class="err" id="quick-error" role="alert" hidden></p>
   </section>
 
@@ -128,10 +130,12 @@
         <p>Sign in with your Forge phone username and password. Both Halo and your laptop are added automatically so you can switch between them with one tap.</p>
         <form id="owner-signin-form" autocomplete="on">
           <label>Address <input id="owner-host" placeholder="192.168.1.20, 100.x.y.z, or computer.your-tailnet.ts.net" autocapitalize="off" autocomplete="off" spellcheck="false" required></label>
+          <label>Check code (first time on Wi-Fi) <input id="owner-check" placeholder="ABCD-EFGH-JKLM-NPQR" autocapitalize="characters" autocomplete="off" spellcheck="false"></label>
           <label>Username <input id="owner-user" placeholder="Username" autocapitalize="off" autocomplete="username" spellcheck="false" required></label>
           <label>Password <input id="owner-pass" type="password" placeholder="Password" autocomplete="current-password" required></label>
           <button type="submit" id="owner-go">Sign in</button>
         </form>
+        <p class="note">Shown on your computer in Devices, Phones or Relay Settings. Checked before your password is sent; leave blank if already trusted or using a .ts.net HTTPS address.</p>
         <p class="err" id="owner-error" role="alert" hidden></p>
       </details>
 
