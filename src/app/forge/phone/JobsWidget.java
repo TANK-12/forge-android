@@ -204,7 +204,7 @@ public class JobsWidget extends AppWidgetProvider {
    * last time. force: a tap, which asks even if the app just did.
    */
   static void refreshAll(Context c, boolean periodic, boolean force) {
-    int[] ids = ids(c);
+    int[] ids = WidgetKit.allRemoteWidgetIds(c);
     if (ids.length == 0) {
       unschedule(c);
       return;
@@ -233,10 +233,10 @@ public class JobsWidget extends AppWidgetProvider {
 
   // -- the 30-minute job -------------------------------------------------------------
 
-  /** Keep the 30-minute job while some widget's computer answers; else no job. */
+  /** Keep the 30-minute job while some remote widget's computer answers; else no job. */
   static void plan(Context c) {
     boolean any = false;
-    for (int id : ids(c)) {
+    for (int id : WidgetKit.allRemoteWidgetIds(c)) {
       String host = hostFor(c, id);
       if (!host.isEmpty() && "ok".equals(store(c).getString("state:" + host, ""))) any = true;
     }
@@ -317,19 +317,22 @@ public class JobsWidget extends AppWidgetProvider {
     SharedPreferences.Editor e = store(c).edit();
     for (int id : ids) e.remove("for:" + id);
     e.apply();
+    plan(c);
   }
 
   @Override
   public void onDisabled(Context c) {
-    unschedule(c);
+    plan(c);
   }
 
   @Override
   public void onReceive(Context c, Intent intent) {
     super.onReceive(c, intent);
     String action = intent.getAction();
+    if (!REFRESH.equals(action) && !NEXT.equals(action)) return;
+    if (!WidgetKit.validTap(c, intent)) return;
     int id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
-    if (id == AppWidgetManager.INVALID_APPWIDGET_ID) return;
+    if (!WidgetKit.hasId(ids(c), id)) return;
     if (NEXT.equals(action)) {
       JSONArray list = computers(c);
       String now = hostFor(c, id);
@@ -366,8 +369,7 @@ public class JobsWidget extends AppWidgetProvider {
   }
 
   static void drawAll(Context c) {
-    AppWidgetManager m = AppWidgetManager.getInstance(c);
-    for (int id : ids(c)) draw(c, m, id);
+    WidgetKit.redrawRemoteWidgets(c);
   }
 
   static int colour(JSONObject theme, String key, int fallback) {
@@ -388,8 +390,8 @@ public class JobsWidget extends AppWidgetProvider {
   }
 
   static PendingIntent tap(Context c, int id, String action) {
-    Intent i = new Intent(c, JobsWidget.class).setAction(action)
-        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id);
+    Intent i = WidgetKit.signTap(c, new Intent(c, JobsWidget.class).setAction(action)
+        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id));
     int code = id * 2 + (NEXT.equals(action) ? 1 : 0);
     return PendingIntent.getBroadcast(c, code, i, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
   }
@@ -456,7 +458,7 @@ public class JobsWidget extends AppWidgetProvider {
       fill(v, reply, small);
       v.setTextViewText(R.id.foot, updated);
     }
-    m.updateAppWidget(id, v);
+    WidgetKit.safeUpdate(m, id, v);
   }
 
   /** A message in place of the lists. */

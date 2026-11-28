@@ -25,5 +25,10 @@ public final class WallPick {
     return true;
   }
 
+  /** Last recorded visualiser wallpaper renderer status, for diagnostics. */
+  public static String status(Context c) {
+    return Prefs.wallStatus(c);
+  }
+
   private WallPick() {}
 }

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Forge</title>
 <link rel="stylesheet" href="/start.css">
+<link rel="stylesheet" href="/studio.css">
 </head>
 <body>
 <div class="wallpaper-backdrop" aria-hidden="true"></div>
@@ -13,57 +14,327 @@
   <a class="nav-brand" href="#home" aria-label="Forge home"><img src="/icon.svg" alt="" width="32" height="32"><b>Forge</b></a>
   <a href="#home" data-page="home"><span aria-hidden="true">⌂</span><span>Home</span></a>
   <a href="#apps" data-page="apps"><span aria-hidden="true">▦</span><span>Apps</span></a>
+  <a href="#studio" data-page="studio"><span aria-hidden="true">✦</span><span>Studio</span></a>
   <a href="#wallpaper" data-page="wallpaper"><span aria-hidden="true">◈</span><span>Wallpaper</span></a>
   <a href="#computers" data-page="computers"><span aria-hidden="true">▣</span><span>Computers</span></a>
   <a href="#settings" data-page="settings"><span aria-hidden="true">⚙</span><span>Settings</span></a>
 </nav>
 <main>
-  <header class="hero" id="hero" data-pane="home">
-    <div class="hero-top"><img src="/icon.svg" alt="" width="34" height="34"><span class="brand">Forge</span><span class="chip" id="hero-version"></span></div>
-    <time id="home-clock" class="home-clock" aria-label="Time"></time><p id="home-date"></p>
-    <h1 id="greet">Hello</h1>
-    <p id="hero-line">Make yourself at home.</p>
-    <a class="offer" id="offer" href="#settings" hidden><span id="offer-line"></span><b>Update</b></a>
-  </header>
-
-  <section class="card owner-quick" id="quick-login-home" data-pane="home">
-    <h2>Relay &amp; Forge on Halo or Laptop</h2>
-    <p class="note" id="quick-home-note">Sign in once to see running jobs, control Relay, chat, and open Forge apps from Wi-Fi or away.</p>
-    <div id="quick-computers" class="row" hidden></div>
-    <form id="quick-login-form" autocomplete="on">
-      <label>Computer address (Wi-Fi or Tailscale) <input id="quick-host" placeholder="192.168.1.20 or 100.64.0.10" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" required></label>
-      <label>Check code (first time on Wi-Fi) <input id="quick-check" placeholder="ABCD-EFGH-JKLM-NPQR" autocapitalize="characters" autocomplete="off" spellcheck="false"></label>
-      <label>Username <input id="quick-user" placeholder="Username" autocapitalize="off" autocomplete="username" spellcheck="false" required></label>
-      <label>Password <input id="quick-pass" type="password" placeholder="Password" autocomplete="current-password" required></label>
-      <div class="row" style="width:100%">
-        <button type="submit" id="quick-go">Sign in &amp; open Relay</button>
-        <button type="button" class="quiet" id="quick-scan">Find on Wi-Fi</button>
+  <div class="home-bento" id="home-bento" data-pane="home">
+    <header class="hero" id="hero" data-home-sec="hero">
+      <div class="hero-top"><img src="/icon.svg" alt="" width="34" height="34"><span class="brand">Forge</span><span class="chip" id="hero-version"></span></div>
+      <time id="home-clock" class="home-clock" aria-label="Time"></time><p id="home-date"></p>
+      <h1 id="greet">Hello</h1>
+      <p id="hero-line">Make yourself at home.</p>
+      <div class="adaptive-pill-row">
+        <a class="hw-pill" id="home-hw-pill" href="#settings"><b>Adaptive</b> <span>Checking device…</span></a>
+        <a class="hw-pill" href="#studio"><b>Studio</b> <span>Widget maker &amp; layout</span></a>
       </div>
-    </form>
-    <p class="note">Shown on your computer in Devices, Phones or Relay Settings. Checked before your password is sent; leave blank if already trusted or using a .ts.net HTTPS address.</p>
-    <p class="err" id="quick-error" role="alert" hidden></p>
-  </section>
+      <a class="offer" id="offer" href="#settings" hidden><span id="offer-line"></span><b>Update</b></a>
+    </header>
 
-  <section class="home-apps" data-pane="home">
-    <div class="section-head"><h2>Your space</h2><a class="button quiet" href="#apps">All apps</a></div>
-    <p class="note">Pin your favourites from Apps. Everything here runs on this device.</p>
-    <div id="home-apps" class="grid"></div>
-  </section>
-  <nav class="features" data-pane="home" aria-label="Make it yours">
-    <a class="feature viz" href="/visualiser" id="viz-tile">
-      <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-      <span class="feature-text"><strong>Visualiser</strong><small id="viz-line">Your music, drawn live</small></span>
-      <span class="go" aria-hidden="true">Play</span>
-    </a>
-    <a class="feature look" href="#wallpaper" id="look-tile">
-      <span class="feature-text"><strong>Wallpaper and widgets</strong><small id="look-line">Forge's themes on your home screen</small></span>
-      <span class="go quiet" aria-hidden="true">Open</span>
-    </a>
-  </nav>
+    <section class="card media-home-card" id="home-media-card" data-home-sec="media">
+      <div class="media-home-top">
+        <h2>Now playing &amp; queue</h2>
+        <a class="button quiet mini-btn" href="https://music.offline.forge/">Music</a>
+      </div>
+      <div class="media-home-title" id="home-media-title">Ready for music, podcasts, radio or YouTube</div>
+      <p class="muted" id="home-media-sub">Open Music, Media or YouTube below — widgets update automatically.</p>
+      <p class="note" id="home-media-next" hidden></p>
+      <div class="media-transport-row">
+        <button type="button" class="quiet" data-home-mkey="prev" aria-label="Previous">⏮</button>
+        <button type="button" data-home-mkey="play" aria-label="Play or pause">⏯ Play</button>
+        <button type="button" class="quiet" data-home-mkey="pause" aria-label="Pause">⏸</button>
+        <button type="button" class="quiet" data-home-mkey="next" aria-label="Next">⏭</button>
+      </div>
+    </section>
+
+    <section class="card span-all" id="home-media-shelf" data-home-sec="media_shelf">
+      <div class="section-head">
+        <h2>Watch, listen &amp; relax</h2>
+        <a class="button quiet mini-btn" href="https://media.offline.forge/">Full Media hub</a>
+      </div>
+      <div class="media-shelf-grid">
+        <a class="media-shortcut" href="https://music.offline.forge/"><i aria-hidden="true">🎵</i><span>Music &amp; EQ</span></a>
+        <a class="media-shortcut" href="https://youtube.offline.forge/"><i aria-hidden="true">▶️</i><span>YouTube</span></a>
+        <a class="media-shortcut" href="https://media.offline.forge/#podcasts"><i aria-hidden="true">🎙️</i><span>Podcasts</span></a>
+        <a class="media-shortcut" href="https://media.offline.forge/#radio"><i aria-hidden="true">📻</i><span>Live Radio</span></a>
+        <a class="media-shortcut" href="https://media.offline.forge/#audiobooks"><i aria-hidden="true">🎧</i><span>Audiobooks</span></a>
+        <a class="media-shortcut" href="https://media.offline.forge/#videos"><i aria-hidden="true">🎬</i><span>Videos</span></a>
+        <a class="media-shortcut" href="https://media.offline.forge/#crunchyroll"><i aria-hidden="true">🍥</i><span>Crunchyroll</span></a>
+        <a class="media-shortcut" href="https://deck.offline.forge/"><i aria-hidden="true">🕰️</i><span>Desk Deck</span></a>
+      </div>
+    </section>
+
+    <section class="card owner-quick span-all" id="quick-login-home" data-home-sec="relay">
+      <h2>Relay &amp; Forge on Halo or Laptop</h2>
+      <p class="note" id="quick-home-note">Sign in once to see running jobs, control Relay, chat, and open Forge apps from Wi-Fi or away.</p>
+      <div id="quick-computers" class="row" hidden></div>
+      <form id="quick-login-form" autocomplete="on">
+        <label>Computer address (Wi-Fi or Tailscale) <input id="quick-host" placeholder="192.168.1.20 or 100.64.0.10" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" required></label>
+        <label>Check code (first time on Wi-Fi) <input id="quick-check" placeholder="ABCD-EFGH-JKLM-NPQR" autocapitalize="characters" autocomplete="off" spellcheck="false"></label>
+        <label>Username <input id="quick-user" placeholder="Username" autocapitalize="off" autocomplete="username" spellcheck="false" required></label>
+        <label>Password <input id="quick-pass" type="password" placeholder="Password" autocomplete="current-password" required></label>
+        <div class="row" style="width:100%">
+          <button type="submit" id="quick-go">Sign in &amp; open Relay</button>
+          <button type="button" class="quiet" id="quick-scan">Find on Wi-Fi</button>
+        </div>
+      </form>
+      <p class="note">Shown on your computer in Devices, Phones or Relay Settings. Checked before your password is sent; leave blank if already trusted or using a .ts.net HTTPS address.</p>
+      <p class="err" id="quick-error" role="alert" hidden></p>
+    </section>
+
+    <section class="home-apps span-all" data-home-sec="pins">
+      <div class="section-head"><h2>Your space</h2><a class="button quiet" href="#apps">All apps</a></div>
+      <p class="note">Pin your favourites from Apps. Everything here runs on this device.</p>
+      <div id="home-apps" class="grid"></div>
+    </section>
+
+    <nav class="features span-all" data-home-sec="features" aria-label="Make it yours">
+      <a class="feature viz" href="/visualiser" id="viz-tile">
+        <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        <span class="feature-text"><strong>Visualiser</strong><small id="viz-line">Your music, drawn live</small></span>
+        <span class="go" aria-hidden="true">Play</span>
+      </a>
+      <a class="feature look" href="#studio" id="studio-tile">
+        <span class="feature-text"><strong>Widget maker &amp; Studio</strong><small>Design custom home-screen widgets and tailor Forge</small></span>
+        <span class="go" aria-hidden="true">Build</span>
+      </a>
+      <a class="feature look" href="#wallpaper" id="look-tile">
+        <span class="feature-text"><strong>Wallpaper and widgets</strong><small id="look-line">Forge's themes on your home screen</small></span>
+        <span class="go quiet" aria-hidden="true">Open</span>
+      </a>
+    </nav>
+
+    <section class="card span-all" id="home-hw-card" data-home-sec="hardware">
+      <div class="section-head">
+        <h2>Hardware &amp; battery sense</h2>
+        <a class="button quiet mini-btn" href="#settings">Details</a>
+      </div>
+      <p class="muted" id="home-hw-summary">Auto-detecting screen, memory, graphics and battery state…</p>
+    </section>
+  </div>
 
   <section class="banner" id="share" hidden role="status">
     <strong id="share-line"></strong>
     <span class="muted" id="share-how"></span>
+  </section>
+
+  <section id="studio" data-pane="studio" hidden>
+    <div class="page-heading">
+      <p class="eyebrow">Build widgets &amp; shape Forge to this <span class="noun">device</span></p>
+      <h1>Studio</h1>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Studio tools">
+      <button type="button" class="tab" data-studio-tab="maker" aria-selected="true">Widget maker</button>
+      <button type="button" class="tab" data-studio-tab="custom" aria-selected="false">Customise Forge</button>
+    </div>
+
+    <div id="studio-maker-pane" class="studio-layout">
+      <div class="studio-preview-col card">
+        <h2>Live preview</h2>
+        <p class="note">Updates immediately on save, media change or Relay check — zero polling loops.</p>
+        <div class="studio-stage" id="studio-preview-box"></div>
+        <div class="row" style="margin-top:14px">
+          <button type="button" id="wm-pin-btn">Add to home screen</button>
+          <button type="button" class="quiet" id="wm-save-btn">Save design</button>
+          <button type="button" class="quiet mini-btn" id="wm-new-btn">+ New</button>
+          <button type="button" class="quiet mini-btn" id="wm-delete-btn">Delete</button>
+        </div>
+        <p class="note" id="studio-status" role="status" hidden></p>
+        <div class="studio-group">
+          <label>Saved designs</label>
+          <div class="app-cat-bar" id="studio-design-chips"></div>
+          <div class="row" id="studio-placed-list" hidden></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="studio-group">
+          <h2>Layout &amp; content</h2>
+          <label>Widget name <input id="wm-name" maxlength="48" placeholder="My custom widget"></label>
+          <div class="studio-grid-2">
+            <label>Size on home screen
+              <select id="wm-size">
+                <option value="compact">Compact pill (3×1)</option>
+                <option value="card" selected>Card (4×2)</option>
+                <option value="board">Board (4×3)</option>
+              </select>
+            </label>
+            <label>Arrangement
+              <select id="wm-layout">
+                <option value="split" selected>Side-by-side split</option>
+                <option value="stack">Stacked rows</option>
+                <option value="bar">Single bar</option>
+              </select>
+            </label>
+          </div>
+          <div class="studio-grid-2">
+            <label>Primary block
+              <select id="wm-primary">
+                <option value="media">Now playing (Music / Media)</option>
+                <option value="next_up">Next up</option>
+                <option value="queue">Queue list</option>
+                <option value="jobs">Forge jobs (Computer)</option>
+                <option value="clock">Clock &amp; date</option>
+                <option value="hardware">Hardware &amp; battery</option>
+                <option value="shortcuts">App shortcuts</option>
+                <option value="note">Custom note</option>
+              </select>
+            </label>
+            <label>Second block (Card / Board)
+              <select id="wm-secondary">
+                <option value="none">None (single focus)</option>
+                <option value="next_up" selected>Next up</option>
+                <option value="queue">Queue list</option>
+                <option value="media">Now playing</option>
+                <option value="jobs">Forge jobs</option>
+                <option value="hardware">Hardware &amp; battery</option>
+                <option value="shortcuts">App shortcuts</option>
+                <option value="note">Custom note</option>
+              </select>
+            </label>
+          </div>
+          <label>Queue &amp; Next up source
+            <select id="wm-source">
+              <option value="auto" selected>Automatic (local Music/YouTube queue, else Computer Relay)</option>
+              <option value="device_media">This device's Music, Media &amp; YouTube queue</option>
+              <option value="computer_relay">Paired computer's Relay queue</option>
+            </select>
+          </label>
+          <div id="wm-note-wrap" class="studio-grid-2" hidden>
+            <label>Note heading <input id="wm-note-title" maxlength="60" placeholder="Today"></label>
+            <label>Note lines <textarea id="wm-note-body" maxlength="240" placeholder="One line per item…"></textarea></label>
+          </div>
+        </div>
+
+        <div class="studio-group">
+          <h2>Colours, glass &amp; shape</h2>
+          <div class="studio-grid-2">
+            <label>Colour mode
+              <select id="wm-theme-mode">
+                <option value="auto" selected>Follow active Forge theme</option>
+                <option value="oled">Pure black (battery-saving)</option>
+                <option value="custom">Custom palette</option>
+              </select>
+            </label>
+            <label>Text scale
+              <select id="wm-scale">
+                <option value="compact">Compact</option>
+                <option value="normal" selected>Normal</option>
+                <option value="large">Large</option>
+              </select>
+            </label>
+          </div>
+          <div class="swatch-row" id="wm-swatches" aria-label="Quick colour palettes"></div>
+          <div class="row" id="wm-colors-wrap" hidden>
+            <label>Panel <input type="color" class="color-pick" id="wm-bg" value="#131826"></label>
+            <label>Accent <input type="color" class="color-pick" id="wm-accent" value="#7cc8a4"></label>
+            <label>Text <input type="color" class="color-pick" id="wm-text" value="#eef1f8"></label>
+          </div>
+          <div class="studio-grid-2">
+            <label>Panel opacity: <span id="wm-opacity-val">92%</span>
+              <input type="range" class="studio-range" id="wm-opacity" min="0" max="100" value="92">
+            </label>
+            <label>Corner roundness: <span id="wm-radius-val">20dp</span>
+              <input type="range" class="studio-range" id="wm-radius" min="0" max="32" value="20">
+            </label>
+          </div>
+          <div class="row">
+            <label style="flex:0 1 auto;display:flex;align-items:center;gap:8px"><input type="checkbox" id="wm-header" checked style="width:22px;height:22px;min-height:22px;flex:none"> Show title &amp; edit button</label>
+            <label style="flex:0 1 auto;display:flex;align-items:center;gap:8px"><input type="checkbox" id="wm-controls" checked style="width:22px;height:22px;min-height:22px;flex:none"> Show media keys / shortcut bar</label>
+          </div>
+        </div>
+
+        <div class="studio-group">
+          <h2>Quick-launch shortcuts (pick up to 4)</h2>
+          <div class="row" id="wm-shortcuts-box"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="studio-custom-pane" class="settings-split" hidden>
+      <div class="card">
+        <h2>Look, layout &amp; battery policy</h2>
+        <div class="studio-group">
+          <div class="studio-grid-2">
+            <label>Graphics &amp; motion mode
+              <select id="ac-quality">
+                <option value="auto" selected>Auto-adapt to hardware &amp; battery</option>
+                <option value="full">Full motion &amp; blur</option>
+                <option value="balanced">Balanced (lighter particles)</option>
+                <option value="saver">Battery saver (still &amp; crisp)</option>
+              </select>
+            </label>
+            <label>Card surface style
+              <select id="ac-surface">
+                <option value="auto" selected>Automatic (blur on strong GPU, solid on light)</option>
+                <option value="glass">Frosted glass</option>
+                <option value="solid">Crisp solid</option>
+                <option value="oled">Pure black (OLED)</option>
+              </select>
+            </label>
+          </div>
+          <div class="studio-grid-2">
+            <label>Text size
+              <select id="ac-font">
+                <option value="compact">Compact (16px)</option>
+                <option value="normal" selected>Normal (18px)</option>
+                <option value="large">Large (20px)</option>
+                <option value="xl">Extra large (22px)</option>
+              </select>
+            </label>
+            <label>Card spacing
+              <select id="ac-density">
+                <option value="comfortable" selected>Comfortable</option>
+                <option value="compact">Compact</option>
+              </select>
+            </label>
+          </div>
+          <div class="studio-grid-2">
+            <label>Corner style
+              <select id="ac-corners">
+                <option value="sharp">Sharp</option>
+                <option value="rounded" selected>Rounded</option>
+                <option value="pill">Extra round</option>
+              </select>
+            </label>
+            <label>Navigation bar
+              <select id="ac-nav">
+                <option value="auto" selected>Automatic (side rail on tablet, dock on phone)</option>
+                <option value="rail">Always left rail</option>
+                <option value="dock">Always bottom dock</option>
+              </select>
+            </label>
+          </div>
+          <div class="studio-grid-2">
+            <label>Apps layout
+              <select id="ac-cols">
+                <option value="auto" selected>Automatic grid</option>
+                <option value="2">2 columns</option>
+                <option value="3">3 columns</option>
+                <option value="4">4 columns</option>
+                <option value="list">Compact list</option>
+              </select>
+            </label>
+            <label>Pause motion under unplugged battery: <span id="ac-pause-val">15%</span>
+              <input type="range" class="studio-range" id="ac-pause-pct" min="5" max="50" step="5" value="15">
+            </label>
+          </div>
+          <div class="row">
+            <label>Custom accent <input type="color" class="color-pick" id="ac-accent" value="#7cc8a4"></label>
+            <label>Custom background <input type="color" class="color-pick" id="ac-bg" value="#0b0d12"></label>
+            <button type="button" class="quiet mini-btn" id="ac-reset-colors">Use theme colours</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Home screen sections</h2>
+        <p class="note">Choose what appears on Home and arrange the order for your phone or tablet.</p>
+        <div class="section-order-list" id="ac-home-order"></div>
+      </div>
+    </div>
   </section>
 
   <section class="card walls" id="walls" data-pane="wallpaper" hidden>
@@ -87,14 +358,25 @@
   </section>
 
   <section class="card" id="widgets" data-pane="wallpaper">
-    <h2>Widgets</h2>
-    <p class="note" id="widgets-note">Put one on the home screen: Android asks where. Long-press it there to resize; tap it to open Forge.</p>
-    <div class="row">
-      <a class="button quiet" href="/widget-add?kind=particles">Particles</a>
+    <div class="section-head">
+      <h2>Preset widgets</h2>
+      <a class="button" href="#studio">Open Widget Maker</a>
+    </div>
+    <p class="note" id="widgets-note">Put a ready-made widget on the home screen, or build your own in Studio. All widgets stay battery-light with no polling loops.</p>
+    <div class="row" id="widget-buttons">
+      <a class="button quiet" href="/widget-add?kind=queue">Queue</a>
+      <a class="button quiet" href="/widget-add?kind=media">Media (Now playing)</a>
+      <a class="button quiet" href="/widget-add?kind=next_up">Next up</a>
+      <a class="button quiet" href="/widget-add?kind=quick">Quick launch</a>
+      <a class="button quiet" href="/widget-add?kind=jobs">Forge jobs</a>
       <a class="button quiet" href="/widget-add?kind=visualiser">Visualiser</a>
+      <a class="button quiet" href="/widget-add?kind=particles">Particles</a>
       <a class="button quiet" href="/widget-add?kind=clock">Clock</a>
       <a class="button quiet" href="/widget-add?kind=music">Music keys</a>
-      <a class="button quiet" href="/widget-add?kind=jobs">Forge jobs</a>
+    </div>
+    <p class="note" id="widget-status" role="status" hidden></p>
+    <div class="row" id="media-access-row" hidden>
+      <a class="button quiet" href="/media-access">Enable song titles for Media widget</a>
     </div>
   </section>
 
@@ -153,15 +435,27 @@
       <section id="local" data-pane="apps" hidden>
         <div class="page-heading"><p class="eyebrow">Your tools, wherever you are</p><h1>Apps</h1></div>
         <label class="app-search"><span>Find an app</span><input id="app-search" type="search" placeholder="Search your apps" autocomplete="off"></label>
+        <div class="app-cat-bar" id="app-cat-bar" role="tablist" aria-label="App categories">
+          <button type="button" class="cat-chip on" data-cat="all">All</button>
+          <button type="button" class="cat-chip" data-cat="media">Media &amp; Music</button>
+          <button type="button" class="cat-chip" data-cat="create">Create</button>
+          <button type="button" class="cat-chip" data-cat="study">Study &amp; Read</button>
+          <button type="button" class="cat-chip" data-cat="tools">Tools &amp; AI</button>
+        </div>
         <p class="note" id="app-count" role="status"></p><p class="note" id="app-empty" hidden>No apps match. Try another name.</p>
         <h2>On this <span class="noun">device</span></h2>
         <p class="note">These run with no computer at all. Their saves stay here.</p>
         <div id="apps" class="grid"></div>
       </section>
       <section class="card" id="device" data-pane="settings" hidden>
-        <h2>This <span class="noun">device</span></h2>
+        <div class="section-head">
+          <h2>Hardware &amp; battery auto-detect</h2>
+          <a class="button quiet mini-btn" href="#studio">Customise</a>
+        </div>
         <p id="device-now"></p>
         <p class="note" id="device-facts"></p>
+        <div class="hw-specs-grid" id="hw-specs-grid"></div>
+        <ul class="adaptive-reasons" id="hw-adaptive-reasons"></ul>
       </section>
       <details class="card" id="petal" data-pane="settings">
         <summary>Help with small jobs (Petal)</summary>
@@ -193,5 +487,6 @@
 <script src="/device.js"></script>
 <script src="/forge_particles.js"></script>
 <script src="/start.js"></script>
+<script src="/studio.js"></script>
 </body>
 </html>

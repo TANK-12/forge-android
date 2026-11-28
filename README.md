@@ -2,6 +2,41 @@
 
 A small Android app for Forge, the desktop tool hub. One WebView.
 
+**0.23 — Forge for Android 2:** redesigned for
+both tablets (multi-pane bento Home, side-by-side Studio, split Settings and
+left rail) and phones (one-hand bottom dock, category filters and compact
+cards), while keeping all 19 existing offline app origins, owner login with
+certificate check code, paired computers, live/still wallpapers, updates and
+Petal intact:
+
+- **Hardware & battery auto-detect (`HardwareProfile`):** probes screen size,
+  density and max refresh rate, memory and low-RAM status, CPU cores/ABI/max
+  clock, OpenGL ES/Vulkan/WebGL 2, sensors (accelerometer, gyroscope, light,
+  foldable hinge) and audio capture (`Visualizer` output session vs microphone),
+  and listens event-driven while open for battery level, charging, Battery Saver
+  and thermal state (zero background polling). Automatically scales or pauses
+  blur and particles on lighter GPUs or low unplugged battery (`<= 15%` switches
+  to zero-FPS OLED black).
+- **Studio — Widget Maker & App Customisation (`#studio`):** build and save
+  named custom home-screen widgets across `Forge custom (compact)`, `Forge
+  custom (card)` and `Forge custom (board)` with side-by-side or stacked blocks
+  (Now playing, Next up, Queue, Forge jobs, Clock & date, Hardware & battery,
+  Quick launch shortcuts, Custom note), theme/OLED/custom colours, panel
+  opacity, corner roundness and text scale, plus a `✎` button on placed widgets
+  to re-edit in Studio. Also adds Task 1591's preset widgets (`Forge queue`,
+  `Forge media`, `Forge next up`, `Forge quick launch`) and full app
+  customisation (graphics/saver policy, glass/solid/OLED surfaces, font size,
+  spacing, corners, rail/dock, app grid columns/list and Home section order).
+- **Media, Music, YouTube & Desk Deck (`23` bundled apps):** bundles the full
+  `Media` suite offline (`media.offline.forge` — local audio/video/audiobook
+  file import, starter ambient WAVs, playlists, bookmarks, Apple podcasts + RSS,
+  LibriVox audiobooks, live radio, YouTube, Crunchyroll browser/app handoff and
+  computer download list), plus dedicated touch-native `Music` (player, queue,
+  playlists, 5-band EQ, sleep timer, LRC lyrics), `YouTube` (privacy-enhanced
+  `youtube-nocookie` theatre, watch queue, channel RSS feeds) and `Desk Deck`
+  (minute-aligned clock, OLED pixel-shift stand, media keys, focus timer and
+  checklist), all feeding Home and home-screen widgets on playback/queue events.
+
 **0.22:** owner sign-in now verifies the computer's certificate before sending
 the username or password (matching the 16-character check code shown on the
 computer in Devices, Phones or Relay Settings, matching an already-trusted
@@ -107,12 +142,14 @@ updates). 0.6 installs over 0.5 by opening its APK the usual way; the
 separate Forge Visualiser and Forge Theme apps are no longer needed (set the
 wallpaper and widgets again from Forge before removing them).
 
-**Status (0.22):** owner sign-in certificate verification (check code, saved
-pin, or system-trusted `.ts.net` HTTPS) built and verified in JVM TLS tests,
-headless Chrome (real APK assets) and headless Android 14 emulator; live
-check on Emerson's physical phone/tablet remains unverified. Forge Settings ->
-Check for updates installs over the old version with the same signing key.
-Existing user data, pairings and preferences stay.
+**Status (0.23):** Forge for Android 2 (adaptive tablet/phone shell, Studio
+widget maker and app customiser, hardware/battery auto-detect, Task 1591
+battery-light widgets, and offline Media, Music, YouTube and Desk Deck apps)
+built, signed with the release key, and verified across unit/JVM tests,
+headless Chrome and headless Android 14 emulator; live check on physical
+phones/tablets remains unverified. Forge Settings -> Check for updates installs
+over earlier versions with the same signing key. Existing user data, pairings
+and preferences stay.
 
 ## Shipping a phone build
 

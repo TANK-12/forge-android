@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="app.forge.phone" android:versionCode="22" android:versionName="0.22">
+    package="app.forge.phone" android:versionCode="23" android:versionName="0.23">
   <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
   <uses-permission android:name="android.permission.INTERNET" />
   <!-- this device's own Wi-Fi address, to find computers on the same network -->
@@ -16,13 +16,21 @@
   <!-- a theme picture as a plain still wallpaper (task 1322) -->
   <uses-permission android:name="android.permission.SET_WALLPAPER" />
   <uses-feature android:name="android.software.live_wallpaper" android:required="false" />
-  <!-- task 1330: find the tablet's live wallpaper screen whatever its maker called it -->
+  <!-- task 1330 & 1591: find the tablet's live wallpaper screen and default launcher -->
   <queries>
     <intent><action android:name="android.service.wallpaper.CHANGE_LIVE_WALLPAPER" /></intent>
     <intent><action android:name="android.service.wallpaper.LIVE_WALLPAPER_CHOOSER" /></intent>
     <intent><action android:name="android.intent.action.SET_WALLPAPER" /></intent>
     <intent><action android:name="android.service.wallpaper.WallpaperService" /></intent>
+    <intent>
+      <action android:name="android.intent.action.MAIN" />
+      <category android:name="android.intent.category.HOME" />
+    </intent>
     <package android:name="com.android.wallpaper.livepicker" />
+    <package android:name="com.google.android.apps.wallpaper" />
+    <package android:name="com.android.wallpaper" />
+    <package android:name="com.samsung.android.app.dressroom" />
+    <package android:name="com.miui.home" />
   </queries>
   <uses-feature android:name="android.hardware.microphone" android:required="false" />
   <application android:label="@string/name" android:icon="@mipmap/icon"
@@ -30,7 +38,7 @@
       android:hardwareAccelerated="true"
       android:theme="@android:style/Theme.Material.NoActionBar">
     <activity android:name=".Main" android:exported="true" android:launchMode="singleTask"
-        android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
+        android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|density"
         android:windowSoftInputMode="adjustResize">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
@@ -53,13 +61,51 @@
         <data android:mimeType="*/*" />
       </intent-filter>
     </activity>
-    <!-- Forge jobs on the home screen (Relay task 1301): JobsWidget, and its 30-minute job -->
-    <receiver android:name=".JobsWidget" android:exported="false" android:label="@string/jobs">
+    <!-- Forge jobs, queue, next up, media and quick-launch widgets (tasks 1301 & 1591).
+         AppWidgetProvider receivers are exported="true" per Android docs so strict OEM
+         tablet launchers can bind and update them reliably. -->
+    <receiver android:name=".JobsWidget" android:exported="true" android:label="@string/jobs">
       <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_jobs" />
     </receiver>
+    <receiver android:name=".QueueWidget" android:exported="true" android:label="@string/queue">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_queue" />
+    </receiver>
+    <receiver android:name=".MediaWidget" android:exported="true" android:label="@string/media">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_media" />
+    </receiver>
+    <receiver android:name=".NextUpWidget" android:exported="true" android:label="@string/next_up">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_next_up" />
+    </receiver>
+    <receiver android:name=".QuickForgeWidget" android:exported="true" android:label="@string/quick_launch">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_quick" />
+    </receiver>
+    <!-- Custom home-screen widgets built in Forge Studio (task 1592) -->
+    <receiver android:name=".CustomWidget$Compact" android:exported="true" android:label="@string/custom_compact">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_custom_compact" />
+    </receiver>
+    <receiver android:name=".CustomWidget$Card" android:exported="true" android:label="@string/custom_card">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_custom_card" />
+    </receiver>
+    <receiver android:name=".CustomWidget$Board" android:exported="true" android:label="@string/custom_board">
+      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_custom_board" />
+    </receiver>
     <service android:name=".JobsWidget$Refresh" android:exported="false"
         android:permission="android.permission.BIND_JOB_SERVICE" />
+    <!-- Optional event-driven media session reader for MediaWidget song titles (task 1591) -->
+    <service android:name=".MediaBridge" android:exported="true" android:label="@string/media_listener"
+        android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+      <intent-filter>
+        <action android:name="android.service.notification.NotificationListenerService" />
+      </intent-filter>
+    </service>
     <!-- Android's installer answers here while an update installs (task 1316) -->
     <receiver android:name=".Updates$Done" android:exported="false" />
 
@@ -76,7 +122,7 @@
       </intent-filter>
       <meta-data android:name="android.service.wallpaper" android:resource="@xml/viz_wallpaper" />
     </service>
-    <receiver android:name="app.forge.visualiser.VizWidget" android:exported="false"
+    <receiver android:name="app.forge.visualiser.VizWidget" android:exported="true"
         android:label="@string/viz_widget">
       <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_visualiser" />
@@ -94,17 +140,17 @@
       </intent-filter>
       <meta-data android:name="android.service.wallpaper" android:resource="@xml/theme_wallpaper" />
     </service>
-    <receiver android:name="app.forge.theme.Widgets$ClockWidget" android:exported="false"
+    <receiver android:name="app.forge.theme.Widgets$ClockWidget" android:exported="true"
         android:label="@string/clock">
       <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_clock" />
     </receiver>
-    <receiver android:name="app.forge.theme.Widgets$ParticlesWidget" android:exported="false"
+    <receiver android:name="app.forge.theme.Widgets$ParticlesWidget" android:exported="true"
         android:label="@string/particles_widget">
       <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_particles" />
     </receiver>
-    <receiver android:name="app.forge.theme.Widgets$MusicWidget" android:exported="false"
+    <receiver android:name="app.forge.theme.Widgets$MusicWidget" android:exported="true"
         android:label="@string/music">
       <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_music" />

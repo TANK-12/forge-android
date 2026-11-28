@@ -107,7 +107,11 @@
       <button data-v="0.75">Balanced</button>
       <button data-v="1">Sharp</button>
     </div>
-    <p class="hint">The wallpaper only moves while you can see it. Battery Saver drops it to 15 frames a second, and under 15% battery it holds a still picture.</p>
+    <div class="chips" data-pref="wallEngine">
+      <button data-v="auto">Auto renderer</button>
+      <button data-v="native">Lightweight native</button>
+    </div>
+    <p class="hint">Auto uses full WebGL looks when the tablet allows them and automatically switches to lightweight native bars if the system blocks them. The wallpaper pauses whenever hidden or the screen turns off, caps at 15 fps on Battery Saver, and holds still under 15% battery.</p>
     <p class="hint" id="why"></p>
   </section>
 </div>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp" android:minHeight="56dp" android:targetCellWidth="3" android:targetCellHeight="1"
+    android:minResizeWidth="110dp" android:minResizeHeight="48dp" android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0" android:initialLayout="@layout/widget_custom_compact"
+    android:previewLayout="@layout/widget_custom_compact" android:description="@string/about_custom_compact"
+    android:widgetCategory="home_screen|keyguard" />

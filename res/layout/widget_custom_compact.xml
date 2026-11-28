@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/cw_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:padding="2dp">
+  <ImageView android:id="@+id/cw_bg" android:layout_width="match_parent"
+      android:layout_height="match_parent" android:src="@drawable/panel" android:scaleType="fitXY"
+      android:contentDescription="@null" />
+  <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+      android:orientation="horizontal" android:gravity="center_vertical"
+      android:paddingStart="12dp" android:paddingEnd="8dp"
+      android:paddingTop="2dp" android:paddingBottom="2dp">
+    <TextClock android:id="@+id/cw_clock" android:layout_width="wrap_content"
+        android:layout_height="wrap_content" android:layout_marginEnd="10dp"
+        android:includeFontPadding="false"
+        android:textSize="20sp" android:fontFamily="sans-serif-light"
+        android:textColor="#ffffffff" android:visibility="gone" />
+    <LinearLayout android:id="@+id/cw_main_tap" android:layout_width="0dp" android:layout_weight="1"
+        android:layout_height="wrap_content" android:orientation="vertical">
+      <TextView android:id="@+id/cw_eyebrow" android:layout_width="match_parent"
+          android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+          android:includeFontPadding="false"
+          android:textSize="10sp" android:fontFamily="sans-serif-medium"
+          android:textColor="#ff7cc8a4" android:text="Forge custom" />
+      <TextView android:id="@+id/cw_primary" android:layout_width="match_parent"
+          android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+          android:includeFontPadding="false"
+          android:textSize="13sp" android:fontFamily="sans-serif-medium"
+          android:textColor="#ffffffff" android:text="Ready" />
+      <TextView android:id="@+id/cw_sub" android:layout_width="match_parent"
+          android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+          android:textSize="11sp" android:textColor="#b3ffffff" android:visibility="gone" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/cw_media_bar" android:layout_width="wrap_content"
+        android:layout_height="42dp" android:orientation="horizontal" android:gravity="center_vertical">
+      <ImageButton android:id="@+id/cw_prev" android:layout_width="32dp" android:layout_height="42dp"
+          android:src="@drawable/ic_prev" android:background="@null" android:contentDescription="Previous" />
+      <ImageButton android:id="@+id/cw_play" android:layout_width="32dp" android:layout_height="42dp"
+          android:src="@drawable/ic_play_pause" android:background="@null" android:contentDescription="Play or pause" />
+      <ImageButton android:id="@+id/cw_pause" android:layout_width="32dp" android:layout_height="42dp"
+          android:src="@drawable/ic_pause" android:background="@null" android:contentDescription="Pause" />
+      <ImageButton android:id="@+id/cw_next" android:layout_width="32dp" android:layout_height="42dp"
+          android:src="@drawable/ic_next" android:background="@null" android:contentDescription="Next" />
+    </LinearLayout>
+    <TextView android:id="@+id/cw_edit" android:layout_width="28dp" android:layout_height="38dp"
+        android:gravity="center" android:text="✎" android:textSize="14sp"
+        android:textColor="#b3ffffff" android:contentDescription="Customise widget in Forge Studio" />
+  </LinearLayout>
+</FrameLayout>

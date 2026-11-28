@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:padding="4dp">
+  <ImageView android:id="@+id/bg" android:layout_width="match_parent"
+      android:layout_height="match_parent" android:src="@drawable/panel" android:scaleType="fitXY"
+      android:contentDescription="@null" />
+  <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+      android:orientation="horizontal" android:gravity="center"
+      android:paddingStart="6dp" android:paddingEnd="6dp">
+    <TextView android:id="@+id/q_home" android:layout_width="0dp" android:layout_weight="1"
+        android:layout_height="48dp" android:gravity="center" android:singleLine="true"
+        android:textSize="13sp" android:fontFamily="sans-serif-medium" android:textColor="#ff7cc4a4"
+        android:text="Forge" />
+    <TextView android:id="@+id/q_viz" android:layout_width="0dp" android:layout_weight="1"
+        android:layout_height="48dp" android:gravity="center" android:singleLine="true"
+        android:textSize="13sp" android:fontFamily="sans-serif-medium" android:textColor="#ffffffff"
+        android:text="Visuals" />
+    <TextView android:id="@+id/q_notes" android:layout_width="0dp" android:layout_weight="1"
+        android:layout_height="48dp" android:gravity="center" android:singleLine="true"
+        android:textSize="13sp" android:fontFamily="sans-serif-medium" android:textColor="#ffffffff"
+        android:text="Notes" />
+    <TextView android:id="@+id/q_focus" android:layout_width="0dp" android:layout_weight="1"
+        android:layout_height="48dp" android:gravity="center" android:singleLine="true"
+        android:textSize="13sp" android:fontFamily="sans-serif-medium" android:textColor="#ffffffff"
+        android:text="Focus" />
+    <TextView android:id="@+id/q_relay" android:layout_width="0dp" android:layout_weight="1"
+        android:layout_height="48dp" android:gravity="center" android:singleLine="true"
+        android:textSize="13sp" android:fontFamily="sans-serif-medium" android:textColor="#ff7cc4a4"
+        android:text="Relay" />
+  </LinearLayout>
+</FrameLayout>

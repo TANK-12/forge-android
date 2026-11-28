@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/cw_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:padding="4dp">
+  <ImageView android:id="@+id/cw_bg" android:layout_width="match_parent"
+      android:layout_height="match_parent" android:src="@drawable/panel" android:scaleType="fitXY"
+      android:contentDescription="@null" />
+  <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+      android:orientation="vertical"
+      android:paddingStart="16dp" android:paddingEnd="14dp"
+      android:paddingTop="12dp" android:paddingBottom="10dp">
+    <LinearLayout android:id="@+id/cw_header" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+      <TextView android:id="@+id/cw_title" android:layout_width="0dp" android:layout_weight="1"
+          android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+          android:textSize="12sp" android:fontFamily="sans-serif-medium"
+          android:textColor="#b3ffffff" android:text="Forge Command Board" />
+      <ImageView android:id="@+id/cw_refresh" android:layout_width="34dp" android:layout_height="34dp"
+          android:padding="7dp" android:src="@drawable/ic_refresh" android:visibility="gone"
+          android:contentDescription="Refresh" />
+      <TextView android:id="@+id/cw_edit" android:layout_width="34dp" android:layout_height="34dp"
+          android:gravity="center" android:text="✎" android:textSize="15sp"
+          android:textColor="#b3ffffff" android:contentDescription="Edit widget in Studio" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/cw_columns" android:layout_width="match_parent"
+        android:layout_height="0dp" android:layout_weight="1"
+        android:orientation="horizontal" android:gravity="center_vertical" android:baselineAligned="false">
+      <LinearLayout android:id="@+id/cw_col_a" android:layout_width="0dp" android:layout_weight="1"
+          android:layout_height="wrap_content" android:orientation="vertical">
+        <TextClock android:id="@+id/cw_clock" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:textSize="34sp"
+            android:fontFamily="sans-serif-light" android:textColor="#ffffffff" android:visibility="gone" />
+        <TextView android:id="@+id/cw_eyebrow" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+            android:textSize="11sp" android:fontFamily="sans-serif-medium"
+            android:textColor="#ff7cc8a4" android:text="Primary" />
+        <TextView android:id="@+id/cw_primary" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:maxLines="2" android:ellipsize="end"
+            android:textSize="17sp" android:fontFamily="sans-serif-medium"
+            android:textColor="#ffffffff" android:text="Forge Studio" />
+        <TextView android:id="@+id/cw_line1" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+            android:textSize="13sp" android:textColor="#b3ffffff" android:visibility="gone" />
+        <TextView android:id="@+id/cw_line2" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+            android:textSize="13sp" android:textColor="#b3ffffff" android:visibility="gone" />
+      </LinearLayout>
+
+      <LinearLayout android:id="@+id/cw_col_b" android:layout_width="0dp" android:layout_weight="1"
+          android:layout_height="wrap_content" android:layout_marginStart="14dp"
+          android:orientation="vertical" android:visibility="gone">
+        <TextView android:id="@+id/cw_sec_eyebrow" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+            android:textSize="11sp" android:fontFamily="sans-serif-medium"
+            android:textColor="#ff7cc8a4" android:text="Queue &amp; next up" />
+        <TextView android:id="@+id/cw_sec_line1" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+            android:textSize="13sp" android:fontFamily="sans-serif-medium"
+            android:textColor="#ffffffff" android:text="" />
+        <TextView android:id="@+id/cw_sec_line2" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+            android:textSize="12sp" android:textColor="#b3ffffff" android:visibility="gone" />
+        <TextView android:id="@+id/cw_sec_line3" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+            android:textSize="12sp" android:textColor="#b3ffffff" android:visibility="gone" />
+      </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/cw_media_bar" android:layout_width="match_parent"
+        android:layout_height="44dp" android:orientation="horizontal" android:gravity="center"
+        android:visibility="gone">
+      <ImageButton android:id="@+id/cw_prev" android:layout_width="0dp" android:layout_height="44dp"
+          android:layout_weight="1" android:src="@drawable/ic_prev" android:background="@null"
+          android:contentDescription="Previous" />
+      <ImageButton android:id="@+id/cw_play" android:layout_width="0dp" android:layout_height="44dp"
+          android:layout_weight="1" android:src="@drawable/ic_play_pause" android:background="@null"
+          android:contentDescription="Play or pause" />
+      <ImageButton android:id="@+id/cw_pause" android:layout_width="0dp" android:layout_height="44dp"
+          android:layout_weight="1" android:src="@drawable/ic_pause" android:background="@null"
+          android:contentDescription="Pause" />
+      <ImageButton android:id="@+id/cw_next" android:layout_width="0dp" android:layout_height="44dp"
+          android:layout_weight="1" android:src="@drawable/ic_next" android:background="@null"
+          android:contentDescription="Next" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/cw_shortcuts" android:layout_width="match_parent"
+        android:layout_height="38dp" android:layout_marginTop="4dp"
+        android:orientation="horizontal" android:gravity="center_vertical" android:visibility="gone">
+      <TextView android:id="@+id/cw_sc1" android:layout_width="0dp" android:layout_weight="1"
+          android:layout_height="36dp" android:gravity="center" android:singleLine="true"
+          android:textSize="12sp" android:fontFamily="sans-serif-medium" android:textColor="#ffffffff" />
+      <TextView android:id="@+id/cw_sc2" android:layout_width="0dp" android:layout_weight="1"
+          android:layout_height="36dp" android:gravity="center" android:singleLine="true"
+          android:textSize="12sp" android:fontFamily="sans-serif-medium" android:textColor="#ffffffff" />
+      <TextView android:id="@+id/cw_sc3" android:layout_width="0dp" android:layout_weight="1"
+          android:layout_height="36dp" android:gravity="center" android:singleLine="true"
+          android:textSize="12sp" android:fontFamily="sans-serif-medium" android:textColor="#ffffffff" />
+      <TextView android:id="@+id/cw_sc4" android:layout_width="0dp" android:layout_weight="1"
+          android:layout_height="36dp" android:gravity="center" android:singleLine="true"
+          android:textSize="12sp" android:fontFamily="sans-serif-medium" android:textColor="#ffffffff" />
+    </LinearLayout>
+  </LinearLayout>
+</FrameLayout>

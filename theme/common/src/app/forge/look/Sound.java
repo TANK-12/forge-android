@@ -26,6 +26,7 @@ import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.media.audiofx.Visualizer;
 import android.os.SystemClock;
+import java.util.function.BooleanSupplier;
 
 public final class Sound {
   public enum Mode { OFF, PHONE, MIC, DEMO }
@@ -33,6 +34,8 @@ public final class Sound {
   public static final int BANDS = 64;
   public static final int WAVE = 512;
   static final float MIN_HZ = 40f, MAX_HZ = 16000f;
+  static final float OFFLOAD_FALLBACK_SEC = 2.5f;
+  static final float MUTED_MIC_SEC = 3.0f;
 
   /** The latest frame. Read it after frame(); it is reused, not copied. */
   public final float[] bands = new float[BANDS];
@@ -44,6 +47,9 @@ public final class Sound {
   private String status = "Not listening";
   private Visualizer vis;
   private Mic mic;
+  private boolean micAllowed;
+  private BooleanSupplier musicActive;
+  private float zeroVisSec, zeroMicSec;
   private final byte[] fftBytes = new byte[1024];
   private final byte[] waveBytes = new byte[1024];
   private final float[] mags = new float[513];
@@ -61,9 +67,19 @@ public final class Sound {
   /** Start listening. PHONE falls back to MIC when the output cannot be read
       and the microphone is allowed; either failing leaves it silent. */
   public synchronized void start(Mode want, boolean micAllowed) {
+    start(want, micAllowed, null);
+  }
+
+  /** Start listening, with an optional check for whether the device is playing
+      music so silent/hardware-offloaded Visualizer(0) output falls back to MIC. */
+  public synchronized void start(Mode want, boolean micAllowed, BooleanSupplier musicActive) {
     stop();
     mode = want;
+    this.micAllowed = micAllowed;
+    this.musicActive = musicActive;
     lastNs = 0;
+    zeroVisSec = 0f;
+    zeroMicSec = 0f;
     if (want == Mode.PHONE) {
       if (!micAllowed) {
         status = "Needs the microphone permission to hear this device's sound";
@@ -74,10 +90,20 @@ public final class Sound {
         vis = new Visualizer(0);
         vis.setEnabled(false);
         int[] range = Visualizer.getCaptureSizeRange();
-        vis.setCaptureSize(Math.min(1024, range[1]));
+        int cap = (range != null && range.length >= 2)
+            ? Math.max(range[0], Math.min(1024, range[1]))
+            : 1024;
+        if (vis.setCaptureSize(cap) != Visualizer.SUCCESS) {
+          throw new IllegalStateException("capture size rejected");
+        }
         vis.setScalingMode(Visualizer.SCALING_MODE_NORMALIZED);
-        vis.setEnabled(true);
-        binHz = vis.getSamplingRate() / 1000f / vis.getCaptureSize();
+        if (vis.setEnabled(true) != Visualizer.SUCCESS) {
+          throw new IllegalStateException("visualizer enable failed");
+        }
+        int sr = vis.getSamplingRate();
+        int actualCap = vis.getCaptureSize();
+        float sampleHz = sr > 0 ? sr / 1000f : 44100f;
+        binHz = sampleHz / Math.max(128, actualCap);
         status = "Listening to this device's own sound";
         return;
       } catch (RuntimeException e) {
@@ -88,22 +114,28 @@ public final class Sound {
       }
     }
     if (want == Mode.MIC) {
-      if (!micAllowed) {
-        status = "Needs the microphone permission";
-        mode = Mode.OFF;
-        return;
-      }
-      mic = Mic.open();
-      if (mic == null) {
-        status = "The microphone is busy or missing";
-        mode = Mode.OFF;
-        return;
-      }
-      binHz = Mic.RATE / 1024f;
-      if (!status.startsWith("This device")) status = "Listening with the microphone";
+      openMic(status.startsWith("This device") ? status : "Listening with the microphone");
       return;
     }
     status = want == Mode.DEMO ? "Demo music (nothing is listening)" : "Not listening";
+  }
+
+  private void openMic(String okStatus) {
+    if (!micAllowed) {
+      status = "Needs the microphone permission";
+      mode = Mode.OFF;
+      return;
+    }
+    mic = Mic.open();
+    if (mic == null) {
+      status = "The microphone is busy or missing";
+      mode = Mode.OFF;
+      return;
+    }
+    mode = Mode.MIC;
+    zeroMicSec = 0f;
+    binHz = mic.rate / 1024f;
+    status = okStatus;
   }
 
   /** Stop listening and forget the mode, so the next start() really starts. */
@@ -116,6 +148,8 @@ public final class Sound {
     mode = Mode.OFF;
     status = "Not listening";
     lastNs = 0;
+    zeroVisSec = 0f;
+    zeroMicSec = 0f;
     sens = 0.08f;
     wavePeak = 0.25f;
     bassAvg = 0f;
@@ -146,11 +180,29 @@ public final class Sound {
         got = false;
       }
       if (got) {
-        int n = vis.getCaptureSize();
-        fromVisualizer(n, dt);
+        int n = Math.min(fftBytes.length, Math.max(128, vis.getCaptureSize()));
+        boolean hasSignal = fromVisualizer(n, dt);
+        if (!hasSignal && musicPlaying()) {
+          zeroVisSec += dt;
+          if (zeroVisSec >= OFFLOAD_FALLBACK_SEC) {
+            // Many tablets offload music to hardware DSP, leaving Visualizer(0) silent.
+            releaseVis();
+            openMic("Device sound is silent to apps (hardware audio offload); using the microphone");
+          }
+        } else {
+          zeroVisSec = 0f;
+        }
       }
     } else if (mic != null) {
       got = mic.read(mags, wave, dt);
+      if (got && mic.allZero()) {
+        zeroMicSec += dt;
+        if (zeroMicSec >= MUTED_MIC_SEC && !status.contains("muted")) {
+          status = "Microphone is silent or blocked in background; open the Visualiser or use Demo beat";
+        }
+      } else {
+        zeroMicSec = 0f;
+      }
     } else if (mode == Mode.DEMO) {
       demo(dt);
       got = true;
@@ -163,16 +215,29 @@ public final class Sound {
     smooth(dt);
   }
 
+  private boolean musicPlaying() {
+    if (musicActive == null) return false;
+    try {
+      return musicActive.getAsBoolean();
+    } catch (RuntimeException e) {
+      return false;
+    }
+  }
+
   // Visualizer bytes: fft[0] is the DC part, fft[1] the top bin, then
   // (real, imaginary) pairs; the wave is unsigned 8-bit around 128.
-  private void fromVisualizer(int n, float dt) {
+  private boolean fromVisualizer(int n, float dt) {
     int half = Math.min(512, n / 2);
     mags[0] = Math.abs(fftBytes[0]) / 128f;
+    float maxMag = 0f;
     for (int k = 1; k < half; k++) {
       float re = fftBytes[2 * k], im = fftBytes[2 * k + 1];
-      mags[k] = (float) Math.sqrt(re * re + im * im) / 128f;
+      float m = (float) Math.sqrt(re * re + im * im) / 128f;
+      mags[k] = m;
+      if (m > maxMag) maxMag = m;
     }
     mags[half] = Math.abs(fftBytes[1]) / 128f;
+    if (mags[half] > maxMag) maxMag = mags[half];
     int step = Math.max(1, n / WAVE);
     float pk = 0f;
     for (int i = 0; i < WAVE; i++) {
@@ -186,6 +251,7 @@ public final class Sound {
     wavePeak = Math.max(0.12f, Math.max(pk, wavePeak * (float) Math.pow(0.75, dt)));
     float wScale = pk > 0.01f ? Math.min(1.2f, 0.72f / wavePeak) : 0f;
     for (int i = 0; i < WAVE; i++) wave[i] = Math.max(-1f, Math.min(1f, wave[i] * wScale));
+    return maxMag > 1e-4f || pk > 1e-4f;
   }
 
   // Magnitudes to 64 pitch-spaced bands using linear RMS (matching desktop
@@ -302,36 +368,53 @@ public final class Sound {
 
   /** The microphone: a small thread keeps the latest 1024 samples. */
   static final class Mic implements Runnable {
-    static final int RATE = 44100;
+    static final int[] RATES = {44100, 48000, 16000};
+    final int rate;
     private final AudioRecord rec;
     private final short[] ring = new short[1024];
     private final float[] re = new float[1024], im = new float[1024];
     private int pos;
     private float wavePeak = 0.05f;
     private volatile boolean running = true;
+    private volatile boolean lastChunkZero = true;
     private final Thread thread;
 
-    private Mic(AudioRecord rec) {
+    private Mic(AudioRecord rec, int rate) {
       this.rec = rec;
+      this.rate = rate;
       thread = new Thread(this, "forge-mic");
       thread.start();
     }
 
     static Mic open() {
-      try {
-        int min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT);
-        AudioRecord r = new AudioRecord(MediaRecorder.AudioSource.MIC, RATE,
-            AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(min, 8192));
-        if (r.getState() != AudioRecord.STATE_INITIALIZED) {
-          r.release();
-          return null;
+      for (int rate : RATES) {
+        AudioRecord r = null;
+        try {
+          int min = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO,
+              AudioFormat.ENCODING_PCM_16BIT);
+          if (min <= 0) continue;
+          r = new AudioRecord(MediaRecorder.AudioSource.MIC, rate,
+              AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(min, 8192));
+          if (r.getState() != AudioRecord.STATE_INITIALIZED) {
+            r.release();
+            continue;
+          }
+          r.startRecording();
+          return new Mic(r, rate);
+        } catch (RuntimeException e) {
+          if (r != null) {
+            try {
+              r.release();
+            } catch (RuntimeException ignored) {
+            }
+          }
         }
-        r.startRecording();
-        return new Mic(r);
-      } catch (RuntimeException e) {
-        return null;
       }
+      return null;
+    }
+
+    boolean allZero() {
+      return lastChunkZero;
     }
 
     @Override public void run() {
@@ -342,12 +425,16 @@ public final class Sound {
           SystemClock.sleep(20);
           continue;
         }
+        boolean nz = false;
         synchronized (this) {
           for (int i = 0; i < n; i++) {
-            ring[pos] = buf[i];
+            short v = buf[i];
+            if (v != 0) nz = true;
+            ring[pos] = v;
             pos = (pos + 1) & 1023;
           }
         }
+        lastChunkZero = !nz;
       }
     }
 

@@ -99,7 +99,7 @@
     }
   })();
   const runs = (p) => GL2 || engines[p.look] !== "webgl";
-  let pacing = 0, fadeAt = 0, choosing = 0;
+  let pacing = 0, fadeTimer = 0, choosing = 0;
   // the screen's refresh rate (0 until known), measured while nothing draws,
   // as the player starts and each time it comes back on screen
   let screenHz = 0, measuring = null;
@@ -227,6 +227,8 @@
     player.stop();
     clearInterval(pacing);
     pacing = 0;
+    clearTimeout(fadeTimer);
+    fadeTimer = 0;
   }
 
   function resume() {
@@ -238,6 +240,7 @@
     else if (screenHz || wall) player.start();
     else measure().then(() => { if (!paused && !still) { player.start(); rateNote(); } });
     if (!pacing) pacing = setInterval(pace, 3000);
+    if (!wall) scheduleFade();
   }
 
   // ---- the player's controls ---------------------------------------------------
@@ -249,7 +252,8 @@
     w.className = "tag " + (current.weight === "heavy" ? "heavy" : "light");
     for (const t of document.querySelectorAll(".tile")) t.classList.toggle("on", t.dataset.id === current.id);
     const onWall = presets.find((p) => p.id === prefs.wall);
-    $("wallNow").textContent = onWall ? `The wallpaper shows ${onWall.name}.` : "";
+    const eng = prefs.wallStatus ? ` (${prefs.wallStatus})` : "";
+    $("wallNow").textContent = onWall ? `The wallpaper shows ${onWall.name}.${eng}` : (prefs.wallStatus || "");
   }
 
   function status() {
@@ -257,6 +261,11 @@
     $("status").textContent = A.status();
     const listens = prefs.source === "phone" || prefs.source === "mic";
     $("allow").hidden = !(listens && prefs.mic === false);
+    if (!$("allow").hidden) {
+      $("ui").classList.remove("faded");
+      clearTimeout(fadeTimer);
+      fadeTimer = 0;
+    }
   }
 
   function syncChips() {
@@ -311,14 +320,30 @@
     }
   }
 
+  function scheduleFade() {
+    clearTimeout(fadeTimer);
+    fadeTimer = 0;
+    if (paused || wall) return;
+    const open = !$("looks").hidden || !$("settings").hidden;
+    const needAllow = $("allow") && !$("allow").hidden;
+    if (open || needAllow) return;
+    fadeTimer = setTimeout(() => {
+      fadeTimer = 0;
+      const sheetOpen = !$("looks").hidden || !$("settings").hidden;
+      const stillNeed = $("allow") && !$("allow").hidden;
+      if (!paused && !sheetOpen && !stillNeed) $("ui").classList.add("faded");
+    }, 5000);
+  }
+
   function sheet(id) {
     for (const s of ["looks", "settings"]) $(s).hidden = s !== id || !$(s).hidden;
     if (id === "settings") rateNote();
+    scheduleFade();
   }
 
   function wake() {
     $("ui").classList.remove("faded");
-    fadeAt = performance.now() + 5000;
+    scheduleFade();
   }
 
   function buildUi() {
@@ -379,10 +404,6 @@
       }
     });
     for (const el of [$("ui")]) el.addEventListener("pointerdown", wake, true);
-    setInterval(() => {
-      const open = !$("looks").hidden || !$("settings").hidden;
-      if (!open && fadeAt && performance.now() > fadeAt) $("ui").classList.add("faded");
-    }, 1000);
     wake();
   }
 

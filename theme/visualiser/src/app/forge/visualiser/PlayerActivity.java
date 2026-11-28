@@ -82,7 +82,8 @@ public final class PlayerActivity extends Activity implements Bridge.Actions {
   }
 
   private void listen() {
-    sound.start(Prefs.source(this), Prefs.micAllowed(this));
+    android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+    sound.start(Prefs.source(this), Prefs.micAllowed(this), () -> am != null && am.isMusicActive());
   }
 
   @Override public void source(String mode) {

@@ -42,8 +42,12 @@ public final class LiveWall {
   public static final int NONE = 0, CONFIRM = 1, LIST = 2, WALLPAPER_APP = 3;
 
   private static final String[][] BY_NAME = {
-    {"com.android.wallpaper.livepicker", "com.android.wallpaper.livepicker.LiveWallpaperChange"},
-    {"com.android.wallpaper.livepicker", "com.android.wallpaper.livepicker.LiveWallpaperActivity"},
+    {"com.android.wallpaper.livepicker", "com.android.wallpaper.livepicker.LiveWallpaperChange", "confirm"},
+    {"com.android.wallpaper.livepicker", "com.android.wallpaper.livepicker.LiveWallpaperActivity", "list"},
+    {"com.google.android.apps.wallpaper", "com.android.wallpaper.picker.CategoryPickerActivity", "app"},
+    {"com.android.wallpaper", "com.android.wallpaper.picker.CategoryPickerActivity", "app"},
+    {"com.samsung.android.app.dressroom", "com.samsung.android.app.dressroom.presentation.settings.WallpaperSettingActivity", "app"},
+    {"com.miui.home", "com.miui.home.launcher.wallpaper.LiveWallpaperActivity", "list"},
   };
 
   /** Names a wallpaper app may give its live wallpaper section, in its own strings. */
@@ -85,10 +89,14 @@ public final class LiveWall {
       ComponentName cn = new ComponentName(n[0], n[1]);
       try {
         ActivityInfo a = pm.getActivityInfo(cn, 0);
-        if (a.exported && a.enabled && !has(out, cn)) {
-          boolean isChange = n[1].endsWith("Change");
-          Intent i = new Intent(isChange ? change : list).setComponent(cn);
-          out.add(new Way(i, isChange ? CONFIRM : LIST, true, label(pm, a)));
+        if (a.exported && a.enabled && a.permission == null && !has(out, cn)) {
+          int kind = "confirm".equals(n[2]) ? CONFIRM : "list".equals(n[2]) ? LIST : WALLPAPER_APP;
+          Intent base = kind == CONFIRM ? change
+              : kind == LIST ? list
+              : new Intent(Intent.ACTION_SET_WALLPAPER)
+                  .putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, service);
+          Intent i = new Intent(base).setComponent(cn);
+          out.add(new Way(i, kind, true, label(pm, a)));
         }
       } catch (PackageManager.NameNotFoundException e) {
         // not on this tablet
@@ -392,7 +400,37 @@ public final class LiveWall {
     StringBuilder text = new StringBuilder("Device: ").append(android.os.Build.MANUFACTURER)
         .append(" ").append(android.os.Build.MODEL)
         .append("\nAndroid: ").append(android.os.Build.VERSION.RELEASE)
-        .append(" (API ").append(android.os.Build.VERSION.SDK_INT).append(")")
+        .append(" (API ").append(android.os.Build.VERSION.SDK_INT).append(")");
+    try {
+      android.app.ActivityManager am = (android.app.ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+      if (am != null) {
+        text.append("\nOpenGL ES: ").append(am.getDeviceConfigurationInfo().getGlEsVersion());
+      }
+    } catch (RuntimeException ignored) {
+    }
+    try {
+      PackageInfo web = android.webkit.WebView.getCurrentWebViewPackage();
+      if (web != null) {
+        text.append("\nWebView: ").append(web.packageName).append(" ").append(web.versionName);
+      }
+    } catch (RuntimeException ignored) {
+    }
+    try {
+      ResolveInfo home = context.getPackageManager().resolveActivity(
+          new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY);
+      if (home != null && home.activityInfo != null) {
+        text.append("\nLauncher: ").append(home.activityInfo.packageName);
+      }
+    } catch (RuntimeException ignored) {
+    }
+    try {
+      android.appwidget.AppWidgetManager awm = android.appwidget.AppWidgetManager.getInstance(context);
+      text.append("\nWidget pin supported: ").append(awm != null && awm.isRequestPinAppWidgetSupported());
+    } catch (RuntimeException ignored) {
+    }
+    boolean mic = context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+        == PackageManager.PERMISSION_GRANTED;
+    text.append("\nAudio permission (RECORD_AUDIO): ").append(mic ? "granted" : "not granted")
         .append("\nLive wallpaper feature declared: ").append(supported(context))
         .append("\nWallpaper supported: ").append(manager.isWallpaperSupported())
         .append("\nWallpaper changes allowed: ").append(manager.isSetWallpaperAllowed())

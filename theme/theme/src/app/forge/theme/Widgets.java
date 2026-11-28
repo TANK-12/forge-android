@@ -100,7 +100,8 @@ final class Widgets {
         : AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 180);
     w = Math.max(110, w);
     h = Math.max(60, h);
-    float scale = Math.min(1f, 560f / (Math.max(w, h) * d));
+    // Keep Binder IPC bitmaps compact (~440px max side) so strict launchers never hit TransactionTooLargeException.
+    float scale = Math.min(1f, 440f / (Math.max(w, h) * d));
     return new int[] {Math.round(w * d * scale), Math.round(h * d * scale), Math.round(d * scale * 100)};
   }
 
@@ -189,7 +190,24 @@ final class Widgets {
       // "Fewer" in the settings: one layer of the two
       v.setViewVisibility(R.id.wp_b, p.amount < 0.7f ? android.view.View.GONE : android.view.View.VISIBLE);
       v.setOnClickPendingIntent(R.id.root, openApp(c));
-      m.updateAppWidget(id, v);
+      try {
+        m.updateAppWidget(id, v);
+      } catch (RuntimeException e) {
+        // Fallback for launchers that reject animated-vector ProgressBar or large RemoteViews bitmaps.
+        Log.w("ForgeTheme", "particles widget fallback for id " + id, e);
+        RemoteViews safe = new RemoteViews(c.getPackageName(), R.layout.widget_clock);
+        panel(safe, t);
+        safe.setTextColor(R.id.time, t.text);
+        safe.setTextColor(R.id.date, t.muted);
+        safe.setInt(R.id.line, "setColorFilter", t.accent);
+        safe.setTextColor(R.id.note, t.muted);
+        safe.setTextViewText(R.id.note, t.label + " · safe mode");
+        safe.setOnClickPendingIntent(R.id.root, openApp(c));
+        try {
+          m.updateAppWidget(id, safe);
+        } catch (RuntimeException ignored) {
+        }
+      }
       Log.i("ForgeTheme", "particles widget " + id + " " + kind + " " + w + "x" + h + " in "
           + (SystemClock.uptimeMillis() - t0) + " ms");
     }

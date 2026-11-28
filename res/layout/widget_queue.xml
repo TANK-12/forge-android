@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:padding="4dp">
+  <ImageView android:id="@+id/bg" android:layout_width="match_parent"
+      android:layout_height="match_parent" android:src="@drawable/panel" android:scaleType="fitXY"
+      android:contentDescription="@null" />
+  <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent"
+      android:orientation="vertical" android:paddingStart="16dp" android:paddingEnd="8dp"
+      android:paddingTop="4dp" android:paddingBottom="6dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="32dp"
+        android:orientation="horizontal" android:gravity="center_vertical">
+      <TextView android:id="@+id/title" android:layout_width="0dp" android:layout_weight="1"
+          android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+          android:textSize="12sp" android:textColor="#b3ffffff" android:text="Forge queue" />
+      <ImageView android:id="@+id/swap" android:layout_width="32dp" android:layout_height="32dp"
+          android:padding="6dp" android:src="@drawable/ic_swap" android:visibility="gone"
+          android:contentDescription="Next computer" />
+      <ImageView android:id="@+id/refresh" android:layout_width="32dp" android:layout_height="32dp"
+          android:padding="6dp" android:src="@drawable/ic_refresh"
+          android:contentDescription="Ask again" />
+    </LinearLayout>
+    <TextView android:id="@+id/head" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+        android:textSize="17sp" android:fontFamily="sans-serif-medium" android:textColor="#ff7cc4a4"
+        android:text="3 in queue" />
+    <TextView android:id="@+id/q1" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="2dp" android:singleLine="true"
+        android:ellipsize="end" android:textSize="13sp" android:textColor="#ffffffff"
+        android:text="#1591  Forge Android widgets" />
+    <TextView android:id="@+id/q2" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="2dp" android:singleLine="true"
+        android:ellipsize="end" android:textSize="13sp" android:textColor="#ffffffff"
+        android:text="#1592  Widget maker" />
+    <TextView android:id="@+id/q3" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="2dp" android:singleLine="true"
+        android:ellipsize="end" android:textSize="13sp" android:textColor="#ffffffff"
+        android:visibility="gone" />
+    <TextView android:id="@+id/q4" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_marginTop="2dp" android:singleLine="true"
+        android:ellipsize="end" android:textSize="13sp" android:textColor="#ffffffff"
+        android:visibility="gone" />
+    <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
+    <TextView android:id="@+id/foot" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end"
+        android:textSize="11sp" android:textColor="#99ffffff" android:text="1 running · 14:05" />
+  </LinearLayout>
+</FrameLayout>

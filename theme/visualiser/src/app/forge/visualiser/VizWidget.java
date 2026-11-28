@@ -94,7 +94,10 @@ public final class VizWidget extends AppWidgetProvider {
       Intent look = new Intent(c, VizWidget.class).setAction(LOOK);
       v.setOnClickPendingIntent(R.id.look, PendingIntent.getBroadcast(c, 1, look,
           PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
-      m.updateAppWidget(id, v);
+      try {
+        m.updateAppWidget(id, v);
+      } catch (RuntimeException ignored) {
+      }
     }
   }
 }

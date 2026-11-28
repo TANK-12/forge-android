@@ -33,6 +33,8 @@ public final class SceneLoop implements Choreographer.FrameCallback {
   private final Handler handler;
   private Choreographer choreographer;
   private boolean visible, hasSurface, scheduled, sized, wasRunning, listening;
+  private boolean screenOn = true;
+  private volatile boolean useSoftwareCanvas;
   private int width, height, hintFps = -1;
   private final Runnable recheck = this::recheck;
   private long lastFrameNs, lastDrawNs;
@@ -77,11 +79,25 @@ public final class SceneLoop implements Choreographer.FrameCallback {
     });
   }
 
+  /** Battery guard: pause immediately when the screen turns off, even if an OEM
+      launcher delays or drops onVisibilityChanged(false). */
+  public void screenOn(boolean on) {
+    handler.post(() -> {
+      screenOn = on;
+      update();
+    });
+  }
+
+  /** Whether drawing fell back to software lockCanvas() because lockHardwareCanvas() failed. */
+  public boolean isSoftwareCanvas() {
+    return useSoftwareCanvas;
+  }
+
   /** Draw again soon even when paused at a still frame (a setting changed). */
   public void redraw() {
     handler.post(() -> {
       lastDrawNs = 0;
-      if (visible && hasSurface && !scheduled) {
+      if (active() && !scheduled && choreographer != null) {
         scheduled = true;
         choreographer.postFrameCallback(this);
       }
@@ -96,17 +112,35 @@ public final class SceneLoop implements Choreographer.FrameCallback {
     });
   }
 
+  /** Stop the loop and wait briefly for the drawing thread to release the surface and audio. */
+  public void quitAndWait(long timeoutMs) {
+    quit();
+    try {
+      thread.join(timeoutMs);
+    } catch (InterruptedException ignored) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  private boolean active() {
+    return visible && hasSurface && screenOn;
+  }
+
   private void update() {
-    boolean run = visible && hasSurface;
+    boolean run = active();
     if (run != wasRunning) {
       wasRunning = run;
       lastFrameNs = 0;
       if (!run) {
         handler.removeCallbacks(recheck);
+        if (scheduled && choreographer != null) {
+          choreographer.removeFrameCallback(this);
+          scheduled = false;
+        }
         listen(false);
       }
     }
-    if (run && !scheduled) {
+    if (run && !scheduled && choreographer != null) {
       scheduled = true;
       choreographer.postFrameCallback(this);
     }
@@ -121,7 +155,7 @@ public final class SceneLoop implements Choreographer.FrameCallback {
   }
 
   private void recheck() {
-    if (visible && hasSurface && !scheduled) {
+    if (active() && !scheduled && choreographer != null) {
       scheduled = true;
       choreographer.postFrameCallback(this);
     }
@@ -129,6 +163,7 @@ public final class SceneLoop implements Choreographer.FrameCallback {
 
   /** Sleep until about the next frame instead of waking on every refresh. */
   private void later(long ms) {
+    if (choreographer == null) return;
     scheduled = true;
     if (ms > 0) choreographer.postFrameCallbackDelayed(this, ms);
     else choreographer.postFrameCallback(this);
@@ -148,7 +183,7 @@ public final class SceneLoop implements Choreographer.FrameCallback {
 
   @Override public void doFrame(long frameTimeNanos) {
     scheduled = false;
-    if (!(visible && hasSurface)) return;
+    if (!active()) return;
     int fps = pacer.fps();
     hint(fps);
     listen(fps > 0);
@@ -179,15 +214,28 @@ public final class SceneLoop implements Choreographer.FrameCallback {
     lastDrawNs = now;
     Canvas c = null;
     try {
-      c = holder.lockHardwareCanvas();
+      if (!useSoftwareCanvas) {
+        try {
+          c = holder.lockHardwareCanvas();
+        } catch (UnsupportedOperationException e) {
+          // Some tablet GPUs/ROMs disallow hardware canvas on wallpaper surfaces.
+          useSoftwareCanvas = true;
+        }
+      }
+      if (c == null) {
+        c = holder.lockCanvas();
+        if (c != null && !useSoftwareCanvas) useSoftwareCanvas = true;
+      }
       if (c != null) scene.frame(c, dt);
     } catch (IllegalStateException | IllegalArgumentException e) {
       // the surface went away between frames; the next surface() call fixes it
+    } catch (RuntimeException e) {
+      useSoftwareCanvas = true;
     } finally {
       if (c != null) {
         try {
           holder.unlockCanvasAndPost(c);
-        } catch (IllegalStateException | IllegalArgumentException ignored) {
+        } catch (RuntimeException ignored) {
         }
       }
     }

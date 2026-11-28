@@ -60,8 +60,9 @@ final class ThemeScene implements SceneLoop.Scene {
     boolean mic = app.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
         == PackageManager.PERMISSION_GRANTED;
     Sound.Mode want = prefs.soundMode();
+    android.media.AudioManager audio = (android.media.AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
     if (want == Sound.Mode.OFF) sound.stop();
-    else if (sound.mode() != want) sound.start(want, mic);
+    else if (sound.mode() != want) sound.start(want, mic, () -> audio != null && audio.isMusicActive());
   }
 
   private void apply() {

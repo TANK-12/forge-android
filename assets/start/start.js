@@ -1,5 +1,5 @@
 // Workspaces share the same local origins and saved app data as earlier builds.
-const pages = ["home", "apps", "wallpaper", "computers", "settings"];
+const pages = ["home", "apps", "studio", "wallpaper", "computers", "settings"];
 let localApps = [];
 let homePins = null;
 try { homePins = JSON.parse(localStorage.getItem("forge.android.pins")); } catch { /* default grid */ }
@@ -15,12 +15,16 @@ function showPage() {
     if (link.dataset.page === page) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
+  if (window.ForgeStudio && ForgeStudio.syncHome) ForgeStudio.syncHome();
   if (typeof wallPreview !== "undefined" && wallPreview) wallPreview.sync();
   document.title = `Forge · ${page[0].toUpperCase()}${page.slice(1)}`;
 }
 function renderApps() {
   const query = $("app-search").value.trim().toLowerCase();
-  const matches = localApps.filter((app) => `${app.label} ${app.name} ${app.tagline}`.toLowerCase().includes(query));
+  const matches = localApps.filter((app) => {
+    if (query) return `${app.label} ${app.name} ${app.tagline}`.toLowerCase().includes(query);
+    return !window.ForgeStudio || window.ForgeStudio.matchesCategory(app.name);
+  });
   const pins = homePins === null ? localApps.slice(0, 6).map((app) => app.name) : homePins;
   $("apps").replaceChildren(...matches.map((app) => {
     const card = el("div", "launcher");
@@ -343,6 +347,14 @@ window.forgeAnswer = (r) => {
     }
     return;
   }
+  if (r.widget_add) {
+    const st = $("widget-status");
+    if (st) {
+      st.textContent = r.widget_add.message || "";
+      st.hidden = !r.widget_add.message;
+    }
+    return;
+  }
   if (r.update) {
     updateSaid(r);
     return;
@@ -352,6 +364,7 @@ window.forgeAnswer = (r) => {
     lookNow();
     loadWalls();
     loadUpdate();
+    if (window.ForgeStudio && ForgeStudio.reload) ForgeStudio.reload();
     return;
   }
   if (r.sending) {
@@ -517,6 +530,7 @@ function applyLook(t) {
   root.setProperty("--wall", t.wall === "home-picture" ? 'url("/home-picture")' : /^walls\/[a-z0-9._-]+\.(jpg|png|webp)$/.test(t.wall || "") ? `url("/${t.wall}")` : "none");
   window.FORGE_THEME = t;
   if (typeof Particles !== "undefined") Particles.apply();
+  if (window.ForgeStudio && ForgeStudio.apply) ForgeStudio.apply();
   if (typeof walls !== "undefined" && walls.themes.length) showWalls();
   if (t.label) $("look-line").textContent = `${t.label} theme. Wallpaper, live wallpaper and widgets.`;
 }
@@ -593,7 +607,7 @@ function wallButton(label, href, quiet) {
 function showWalls() {
   const kind = walls.tab;
   const list = kind === "theme" ? walls.themes : walls.looks;
-  document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === kind)));
+  document.querySelectorAll("#walls .tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === kind)));
   $("wall-grid").replaceChildren(...list.map((item) => wallCard(kind, item)));
   const n = walls.now;
   const themeName = (walls.themes.find((t) => t.id === n.theme) || {}).label || n.theme;
@@ -667,7 +681,9 @@ function loadWalls() {
       $("wall-diagnostics").textContent = n.diagnostics || "No device details returned.";
       if (!walls.pick.theme) walls.pick.theme = n.theme || "";
       if (!walls.pick.visualiser) walls.pick.visualiser = n.look || "";
-      if (n.pin === false) $("widgets-note").textContent = "This home screen adds widgets itself: long-press it, then Widgets, then Forge.";
+      if (n.pin === false) $("widgets-note").textContent = "This home screen adds widgets itself: long-press an empty spot on the home screen, tap Widgets, then Forge.";
+      const mar = $("media-access-row");
+      if (mar) mar.hidden = n.media_access !== false;
       showWalls();
     })
     .catch(() => {});
@@ -684,7 +700,7 @@ Promise.all([
     loadWalls();
   })
   .catch(() => {});
-document.querySelectorAll(".tab").forEach((t) =>
+document.querySelectorAll("#walls .tab").forEach((t) =>
   t.addEventListener("click", () => {
     walls.tab = t.dataset.tab;
     showWalls();
@@ -797,6 +813,19 @@ if (typeof Particles !== "undefined") {
   Particles.init();
   Particles.apply();
 }
-homeClock();
-setInterval(() => { if (!document.hidden) { homeClock(); lookNow(); } }, 30000);
+// Event-driven minute-boundary clock (paused completely when hidden; zero idle polling).
+let clockTimer = 0;
+function scheduleHomeClock() {
+  clearTimeout(clockTimer);
+  if (document.hidden) return;
+  homeClock();
+  const now = new Date();
+  const msToNextMin = (60 - now.getSeconds()) * 1000 - now.getMilliseconds() + 40;
+  clockTimer = setTimeout(scheduleHomeClock, msToNextMin);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) clearTimeout(clockTimer);
+  else { scheduleHomeClock(); greet(); }
+});
+scheduleHomeClock();
 showPage();

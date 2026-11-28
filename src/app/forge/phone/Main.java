@@ -9,6 +9,7 @@ import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.net.ConnectivityManager;
@@ -46,7 +47,6 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 import android.widget.Toast;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -113,6 +113,7 @@ public class Main extends Activity {
   FrameLayout root;
   View full;
   WebChromeClient.CustomViewCallback fullDone;
+  HardwareProfile.Monitor hardwareMonitor;
 
   @Override
   protected void onCreate(Bundle saved) {
@@ -137,6 +138,13 @@ public class Main extends Activity {
     web.setWebChromeClient(new Chrome());
     web.setDownloadListener((url, agent, disposition, mime, length) -> download(url, agent, disposition, mime));
     web.addJavascriptInterface(new Device(), "ForgeAndroid");
+    hardwareMonitor = new HardwareProfile.Monitor(this, profileJson ->
+        runOnUiThread(() -> {
+          Uri cur = Uri.parse(web.getUrl() == null ? "" : web.getUrl());
+          if ("https".equals(cur.getScheme()) && cur.getHost() != null && cur.getHost().endsWith(LOCAL)) {
+            web.evaluateJavascript("window.forgeHardwareChanged && forgeHardwareChanged(" + profileJson + ")", null);
+          }
+        }));
     LinearLayout column = new LinearLayout(this);
     column.setOrientation(LinearLayout.VERTICAL);
     column.addView(makeBar(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
@@ -150,7 +158,11 @@ public class Main extends Activity {
       takeShare(getIntent());
     }
     String jobs = jobsPage(getIntent());
+    String offline = offlinePage(getIntent());
+    String edit = studioEditPage(getIntent());
     if (jobs != null) web.loadUrl(jobs);
+    else if (edit != null) web.loadUrl(edit);
+    else if (offline != null) web.loadUrl(offline);
     else if (saved != null && !saved.getBoolean("forge_page_gone")) web.restoreState(saved);
     else web.loadUrl(startUrl(saved != null ? null : getIntent()));
     if (saved != null && saved.getBoolean("forge_page_gone")) {
@@ -163,8 +175,41 @@ public class Main extends Activity {
     super.onNewIntent(intent);
     setIntent(intent);
     String jobs = jobsPage(intent);
+    String offline = offlinePage(intent);
+    String edit = studioEditPage(intent);
     if (jobs != null) web.loadUrl(jobs);
+    else if (edit != null) web.loadUrl(edit);
+    else if (offline != null) web.loadUrl(offline);
     else if (pairLink(intent) != null || takeShare(intent)) web.loadUrl(startUrl(intent));
+  }
+
+  /** CustomWidget ✎ tap: open Forge Studio focused on that widget's design. */
+  String studioEditPage(Intent intent) {
+    if (intent == null || !CustomWidget.ACTION_EDIT.equals(intent.getAction())) return null;
+    if ((intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return null;
+    String id = intent.getStringExtra("design_id");
+    int wid = intent.getIntExtra("widget_id", -1);
+    intent.setAction(Intent.ACTION_MAIN);
+    if (id != null && id.matches("[a-z0-9_-]{1,40}")) {
+      return startUrl(null) + "&edit=" + Uri.encode(id) + "&widget=" + wid + "#studio";
+    }
+    return startUrl(null) + "#studio";
+  }
+
+  /** QuickForgeWidget / NextUpWidget / CustomWidget tap: an offline Forge app or start workspace pane. */
+  String offlinePage(Intent intent) {
+    if (intent == null || !QuickForgeWidget.OPEN_OFFLINE.equals(intent.getAction())) return null;
+    if ((intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return null;
+    String app = intent.getStringExtra("app");
+    String pane = intent.getStringExtra("pane");
+    intent.setAction(Intent.ACTION_MAIN);
+    if (app != null && app.matches("[a-z0-9-]{1,32}")) {
+      return "https://" + app + LOCAL + "/";
+    }
+    if (pane != null && pane.matches("home|apps|studio|wallpaper|computers|settings")) {
+      return startUrl(null) + "#" + pane;
+    }
+    return null;
   }
 
   /** The Forge jobs widget's tap: that paired computer's Jobs page (no other address). */
@@ -185,7 +230,7 @@ public class Main extends Activity {
   final Runnable tick = new Runnable() {
     @Override
     public void run() {
-      if (JobsWidget.ids(Main.this).length > 0) JobsWidget.refreshSoon(Main.this, false);
+      if (WidgetKit.allRemoteWidgetIds(Main.this).length > 0) JobsWidget.refreshSoon(Main.this, false);
       ticks.postDelayed(this, 2 * 60 * 1000L);
     }
   };
@@ -218,6 +263,8 @@ public class Main extends Activity {
     }
     ticks.removeCallbacks(tick);
     ticks.post(tick); // ask now, and every 2 minutes while the app is open
+    if (hardwareMonitor != null) hardwareMonitor.attach();
+    WidgetKit.redrawLocalWidgets(this);
   }
 
   @Override
@@ -225,6 +272,7 @@ public class Main extends Activity {
     super.onPause();
     Updates.Done.front = false;
     ticks.removeCallbacks(tick);
+    if (hardwareMonitor != null) hardwareMonitor.detach();
     web.onPause(); // the home page's moving parts rest while Forge is out of sight
   }
 
@@ -232,6 +280,12 @@ public class Main extends Activity {
   protected void onDestroy() {
     if (Updates.Done.page == this) Updates.Done.page = null;
     super.onDestroy();
+  }
+
+  @Override
+  public void onConfigurationChanged(Configuration newConfig) {
+    super.onConfigurationChanged(newConfig);
+    if (hardwareMonitor != null) hardwareMonitor.emitIfChanged();
   }
 
   // -- the visualiser and the wallpaper, folded in (task 1316) ---------------------
@@ -322,15 +376,21 @@ public class Main extends Activity {
       app.forge.look.Pacer pacer = new app.forge.look.Pacer(this);
       pacer.setWanted(look.getInt("fps", 60));
       int fps = pacer.fps();
+      String vizWallStatus = app.forge.visualiser.WallPick.status(this);
       String diagnostics = "Forge " + Updates.installedName(this) + "\n"
           + app.forge.look.LiveWall.diagnostics(this, new ComponentName(this, THEME_WALL))
+          + "\nVisualiser wallpaper engine: " + (vizWallStatus.isEmpty() ? "not started yet" : vizWallStatus)
+          + "\n" + WidgetKit.diagnostics(this)
           + "\nParticle kind: " + look.getString("kind", "theme")
           + "\nAmount: " + look.getFloat("amount", 1f)
           + "; size: " + look.getFloat("size", 1f)
           + "; speed: " + look.getFloat("speed", 1f)
           + "\nFrame limit: " + fps + "; " + pacer.why()
           + "\nSelected service does not by itself prove moving frames.";
-      o.put("result", app.forge.look.LiveWall.result(this)).put("diagnostics", diagnostics);
+      o.put("result", app.forge.look.LiveWall.result(this))
+          .put("diagnostics", diagnostics)
+          .put("widgets", WidgetKit.presetsJson(this))
+          .put("media_access", MediaBridge.isAccessEnabled(this));
       return json(o.toString());
     } catch (JSONException e) {
       return json("{}");
@@ -409,21 +469,119 @@ public class Main extends Activity {
     } catch (RuntimeException e) {
       asked = false;
     }
-    if (!asked) {
-      Toast.makeText(this, "Long-press the home screen, then Widgets, then Forge", Toast.LENGTH_LONG).show();
+    if (asked) {
+      answer("{\"widget_add\":{\"ok\":true,\"kind\":" + Link.quote(kind)
+          + ",\"message\":\"Android opened its widget placement prompt. If your launcher does not show one, long-press the home screen, tap Widgets, then Forge.\"}}");
+    } else {
+      String msg = "This home screen adds widgets itself: long-press an empty spot on the home screen, tap Widgets, then Forge.";
+      Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+      answer("{\"widget_add\":{\"ok\":false,\"kind\":" + Link.quote(kind) + ",\"message\":" + Link.quote(msg) + "}}");
     }
   }
 
-  /** The start page's widget names and their classes. */
-  static final Map<String, String> WIDGETS = new HashMap<>();
-
-  static {
-    WIDGETS.put("clock", "app.forge.theme.Widgets$ClockWidget");
-    WIDGETS.put("particles", "app.forge.theme.Widgets$ParticlesWidget");
-    WIDGETS.put("music", "app.forge.theme.Widgets$MusicWidget");
-    WIDGETS.put("visualiser", "app.forge.visualiser.VizWidget");
-    WIDGETS.put("jobs", "app.forge.phone.JobsWidget");
+  void openMediaAccess() {
+    try {
+      startActivity(MediaBridge.accessSettingsIntent());
+    } catch (ActivityNotFoundException e) {
+      Toast.makeText(this, "Open Android Settings, Notifications, Notification access, then enable Forge.", Toast.LENGTH_LONG).show();
+    }
   }
+
+  /** Pin a custom Studio widget design onto the home screen via Android's AppWidgetManager. */
+  void studioPin(String designId, String size) {
+    WidgetStudio.setPendingPinDesign(this, designId);
+    Class<?> cls = CustomWidget.providerForSize(size);
+    android.appwidget.AppWidgetManager m = getSystemService(android.appwidget.AppWidgetManager.class);
+    boolean asked = false;
+    try {
+      asked = m != null && m.isRequestPinAppWidgetSupported()
+          && m.requestPinAppWidget(new android.content.ComponentName(this, cls), null, null);
+    } catch (RuntimeException e) {
+      asked = false;
+    }
+    if (asked) {
+      answer("{\"widget_add\":{\"ok\":true,\"kind\":\"custom\",\"message\":\"Android opened its widget placement prompt.\"}}");
+    } else {
+      String msg = "Long-press an empty spot on your home screen, tap Widgets, then Forge, and pick Forge custom (" + (size == null ? "card" : size) + ").";
+      Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+      answer("{\"widget_add\":{\"ok\":false,\"kind\":\"custom\",\"message\":" + Link.quote(msg) + "}}");
+    }
+  }
+
+  static String reqHeader(WebResourceRequest req, String lowerName) {
+    Map<String, String> h = req == null ? null : req.getRequestHeaders();
+    if (h == null) return null;
+    for (Map.Entry<String, String> e : h.entrySet()) {
+      if (lowerName.equalsIgnoreCase(e.getKey())) return e.getValue();
+    }
+    return null;
+  }
+
+  static boolean sameOriginFetch(WebResourceRequest req, String customHeader) {
+    if (req == null || !"GET".equals(req.getMethod())) return false;
+    if (!"1".equals(reqHeader(req, customHeader))) return false;
+    String site = reqHeader(req, "sec-fetch-site");
+    return site == null || "same-origin".equals(site);
+  }
+
+  WebResourceResponse studioSave(Uri uri, WebResourceRequest req) {
+    if (!sameOriginFetch(req, "x-forge-studio")) return json(403, "Studio requests must come from Forge");
+    try {
+      String raw = uri.getQueryParameter("design");
+      int wid = -1;
+      try { wid = Integer.parseInt(uri.getQueryParameter("widget")); } catch (RuntimeException ignored) {}
+      JSONObject clean = WidgetStudio.saveDesign(this, raw == null ? new JSONObject() : new JSONObject(raw), wid);
+      JobsWidget.plan(this);
+      MediaBridge.syncActive(this);
+      JSONObject out = new JSONObject()
+          .put("ok", true)
+          .put("design", clean)
+          .put("studio", WidgetStudio.studioJson(this));
+      return json(out.toString());
+    } catch (JSONException e) {
+      return json(400, "Invalid widget design");
+    }
+  }
+
+  WebResourceResponse studioDelete(Uri uri, WebResourceRequest req) {
+    if (!sameOriginFetch(req, "x-forge-studio")) return json(403, "Studio requests must come from Forge");
+    WidgetStudio.deleteDesign(this, uri.getQueryParameter("id"));
+    try {
+      return json(new JSONObject().put("ok", true).put("studio", WidgetStudio.studioJson(this)).toString());
+    } catch (JSONException e) {
+      return json("{}");
+    }
+  }
+
+  WebResourceResponse studioCustom(Uri uri, WebResourceRequest req) {
+    if (!sameOriginFetch(req, "x-forge-studio")) return json(403, "Studio requests must come from Forge");
+    try {
+      String raw = uri.getQueryParameter("custom");
+      JSONObject saved = WidgetStudio.saveAppCustom(this, raw == null ? new JSONObject() : new JSONObject(raw));
+      return json(new JSONObject().put("ok", true).put("app_custom", saved).toString());
+    } catch (JSONException e) {
+      return json(400, "Invalid customisation");
+    }
+  }
+
+  WebResourceResponse forgeMediaState(Uri uri, WebResourceRequest req) {
+    if (!sameOriginFetch(req, "x-forge-media")) return json(403, "Media state restricted to Forge apps");
+    String incoming = uri.getQueryParameter("state");
+    if (incoming != null && !incoming.isEmpty()) {
+      WidgetStudio.updateForgeMedia(this, incoming);
+    }
+    return json(WidgetStudio.forgeMediaState(this).toString());
+  }
+
+  WebResourceResponse forgeMediaKey(Uri uri, WebResourceRequest req) {
+    if (!sameOriginFetch(req, "x-forge-media")) return json(403, "Media keys restricted to Forge apps");
+    String key = uri.getQueryParameter("key");
+    boolean ok = key != null && key.matches("prev|play|pause|next") && MediaBridge.control(this, key);
+    return json("{\"ok\":" + ok + "}");
+  }
+
+  /** The start page's widget names and their classes (from WidgetKit declarative presets). */
+  static final Map<String, String> WIDGETS = WidgetKit.WIDGET_MAP;
 
   // -- updates over the air (task 1316) -------------------------------------------
 
@@ -1484,8 +1642,8 @@ public class Main extends Activity {
         return true;
       }
       if (START.equals(uri.getHost())
-          && path.matches("/(visualiser|theme|update-check|update-install|wall-live|wall-still|widget-add)")) {
-        // the visualiser, wallpapers and widgets, and updates: from the start page only
+          && path.matches("/(visualiser|theme|update-check|update-install|wall-live|wall-still|widget-add|media-access|studio-pin)")) {
+        // the visualiser, wallpapers and widgets, studio pin, and updates: from the start page only
         if (onStart(view) && request.isForMainFrame()) {
           if (path.equals("/visualiser")) openVisualiser();
           else if (path.equals("/theme")) openTheme();
@@ -1493,6 +1651,8 @@ public class Main extends Activity {
           else if (path.equals("/wall-live")) wallLive(uri.getQueryParameter("kind"), uri.getQueryParameter("id"), "true".equals(uri.getQueryParameter("next")));
           else if (path.equals("/wall-still")) wallStill(uri.getQueryParameter("id"), uri.getQueryParameter("where"));
           else if (path.equals("/widget-add")) widgetAdd(uri.getQueryParameter("kind"));
+          else if (path.equals("/studio-pin")) studioPin(uri.getQueryParameter("id"), uri.getQueryParameter("size"));
+          else if (path.equals("/media-access")) openMediaAccess();
           else installUpdate();
         }
         return true;
@@ -1543,6 +1703,7 @@ public class Main extends Activity {
         return true;
       }
       if (ours(uri)) return false;
+      if (!request.isForMainFrame() && !request.hasGesture()) return true;
       try {
         startActivity(new Intent(Intent.ACTION_VIEW, uri)); // anything else: the phone's browser
       } catch (ActivityNotFoundException e) {
@@ -1617,6 +1778,16 @@ public class Main extends Activity {
         return reply(404, "text/plain", "No custom picture");
       }
       if (app.equals("start") && path.equals("/walls.json")) return wallsJson();
+      if (app.equals("start") && path.equals("/studio.json")) return json(WidgetStudio.studioJson(Main.this).toString());
+      if (app.equals("start") && path.equals("/studio-save")) return studioSave(uri, request);
+      if (app.equals("start") && path.equals("/studio-delete")) return studioDelete(uri, request);
+      if (app.equals("start") && path.equals("/studio-custom")) return studioCustom(uri, request);
+      if (path.equals("/forge-hardware.json")) {
+        if (!sameOriginFetch(request, "x-forge-hardware")) return json(403, "Hardware profile restricted to Forge");
+        return json(HardwareProfile.currentJson(Main.this).toString());
+      }
+      if (path.equals("/forge-media-state")) return forgeMediaState(uri, request);
+      if (path.equals("/forge-media-key")) return forgeMediaKey(uri, request);
       if (path.equals("/forge-public-fetch") && !app.equals("start")) return publicFetch(app, uri, request);
       if (path.startsWith("/api/")) return reply(503, "application/json", "{\"error\":\"offline\"}");
       if (path.endsWith("/")) path += "index.html";
@@ -1787,28 +1958,26 @@ public class Main extends Activity {
     fullDone = null;
   }
 
-  /** How strong this phone is, as JSON in device.json's profile keys. */
+  /** Coarse device profile for shared/forge_device.js (detailed specs use same-origin /forge-hardware.json). */
   class Device {
     @JavascriptInterface
     public String profile() {
       StringBuilder out = new StringBuilder("{");
       ActivityManager am = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
       ActivityManager.MemoryInfo mem = new ActivityManager.MemoryInfo();
-      am.getMemoryInfo(mem);
+      if (am != null) am.getMemoryInfo(mem);
       out.append("\"memory_gb\":").append(Math.round(mem.totalMem / 1073741824.0 * 10) / 10.0);
       out.append(",\"cores\":").append(Runtime.getRuntime().availableProcessors());
-      out.append(",\"low_ram\":").append(am.isLowRamDevice());
+      out.append(",\"low_ram\":").append(am != null && am.isLowRamDevice());
       PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-      out.append(",\"power_save\":").append(pm.isPowerSaveMode());
-      if (Build.VERSION.SDK_INT >= 29) out.append(",\"thermal\":").append(pm.getCurrentThermalStatus());
-      BatteryManager bm = (BatteryManager) getSystemService(BATTERY_SERVICE);
-      int level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
-      if (level >= 0 && level <= 100) {
-        out.append(",\"battery\":").append(level);
-        out.append(",\"charging\":").append(bm.isCharging());
+      out.append(",\"power_save\":").append(pm != null && pm.isPowerSaveMode());
+      if (Build.VERSION.SDK_INT >= 29 && pm != null) out.append(",\"thermal\":").append(pm.getCurrentThermalStatus());
+      HardwareProfile.Snapshot hs = HardwareProfile.capture(Main.this);
+      if (hs.battery >= 0 && hs.battery <= 100) {
+        out.append(",\"battery\":").append(hs.battery);
+        out.append(",\"charging\":").append(hs.charging);
       }
       out.append(",\"android\":").append(Build.VERSION.SDK_INT);
-      // a tablet by Android's own rule (smallest width 600 dp), for the start page's words and layout
       out.append(",\"tablet\":").append(getResources().getConfiguration().smallestScreenWidthDp >= 600);
       return out.append("}").toString();
     }

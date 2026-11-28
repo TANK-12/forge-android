@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp" android:minHeight="110dp" android:targetCellWidth="4" android:targetCellHeight="2"
+    android:minResizeWidth="180dp" android:minResizeHeight="80dp" android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0" android:initialLayout="@layout/widget_custom_card"
+    android:previewLayout="@layout/widget_custom_card" android:description="@string/about_custom_card"
+    android:widgetCategory="home_screen|keyguard" />

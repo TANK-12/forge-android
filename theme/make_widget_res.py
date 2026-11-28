@@ -468,7 +468,7 @@ def layout(kind: str, shape_key: str) -> str:
         ' android:layout_width="match_parent" android:layout_height="match_parent"'
         ' android:padding="4dp">'
         '<FrameLayout android:layout_width="match_parent" android:layout_height="match_parent"'
-        ' android:background="@drawable/panel" android:clipToOutline="true">'
+        ' android:background="@drawable/panel">'
         '<ImageView android:id="@id/wp_bg" android:layout_width="match_parent"'
         ' android:layout_height="match_parent" android:scaleType="centerCrop"'
         ' android:contentDescription="@null" />'

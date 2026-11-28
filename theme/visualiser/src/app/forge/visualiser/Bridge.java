@@ -10,6 +10,7 @@
 package app.forge.visualiser;
 
 import android.content.Context;
+import android.media.AudioManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
@@ -34,21 +35,29 @@ public final class Bridge {
 
   static final int SIZE = Sound.BANDS + Sound.WAVE + 6;
   private final Context app;
+  private final AudioManager audio;
   private final Sound sound;
   private final Pacer pacer;
   private final Actions actions;
   private final boolean wall;
+  private final Runnable onFrame;
   private volatile boolean stilled;
   private volatile int told = -1;
   private final byte[] out = new byte[SIZE];
   private final Handler main = new Handler(Looper.getMainLooper());
 
   Bridge(Context context, Sound sound, Pacer pacer, Actions actions, boolean wall) {
+    this(context, sound, pacer, actions, wall, null);
+  }
+
+  Bridge(Context context, Sound sound, Pacer pacer, Actions actions, boolean wall, Runnable onFrame) {
     this.app = context.getApplicationContext();
+    this.audio = (AudioManager) this.app.getSystemService(Context.AUDIO_SERVICE);
     this.sound = sound;
     this.pacer = pacer;
     this.actions = actions;
     this.wall = wall;
+    this.onFrame = onFrame;
   }
 
   private static byte unit(float v) {
@@ -56,6 +65,7 @@ public final class Bridge {
   }
 
   @JavascriptInterface public String frame() {
+    if (onFrame != null) onFrame.run();
     synchronized (sound) {
       sound.frame();
       int i = 0;
@@ -81,7 +91,8 @@ public final class Bridge {
       sound.stop();
     } else if (fps > 0 && stilled) {
       stilled = false;
-      sound.start(Prefs.source(app), Prefs.micAllowed(app));
+      sound.start(Prefs.source(app), Prefs.micAllowed(app),
+          () -> audio != null && audio.isMusicActive());
     }
     if (actions != null && fps != told) {
       told = fps;
